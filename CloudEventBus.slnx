@@ -1,0 +1,6 @@
+﻿<Solution>
+  <Project Path="examples/PlaygroundApi\PlaygroundApi.csproj" Type="Classic C#" />
+  <Project Path="src\Saithis.CloudEventBus.EfCoreOutbox\Saithis.CloudEventBus.EfCoreOutbox.csproj" Type="Classic C#" />
+  <Project Path="src\Saithis.CloudEventBus.RabbitMq\Saithis.CloudEventBus.RabbitMq.csproj" Type="Classic C#" />
+  <Project Path="src\Saithis.CloudEventBus\Saithis.CloudEventBus.csproj" Type="Classic C#" />
+</Solution>

@@ -1,0 +1,10 @@
+﻿### GET all notes
+GET http://localhost:5000/notes
+
+### POST create note
+POST http://localhost:5000/notes
+Content-Type: application/json
+
+{
+"text":"This is my new note :)"
+}
