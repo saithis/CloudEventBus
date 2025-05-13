@@ -1,9 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 
-namespace Saithis.CloudEventBus.EfCoreOutbox;
+namespace Saithis.CloudEventBus.EfCoreOutbox.Internal;
 
-public class OutboxTriggerInterceptor<TDbContext>(
+internal class OutboxTriggerInterceptor<TDbContext>(
     OutboxProcessor<TDbContext> outboxProcessor, 
     IMessageSerializer messageSerializer,
     TimeProvider timeProvider) 

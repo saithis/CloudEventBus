@@ -4,9 +4,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace Saithis.CloudEventBus.EfCoreOutbox;
+namespace Saithis.CloudEventBus.EfCoreOutbox.Internal;
 
-public class OutboxProcessor<TDbContext>(
+internal class OutboxProcessor<TDbContext>(
     IServiceScopeFactory serviceScopeFactory, 
     IDistributedLockProvider distributedLockProvider, 
     TimeProvider timeProvider,

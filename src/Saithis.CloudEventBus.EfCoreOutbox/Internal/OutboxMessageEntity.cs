@@ -1,9 +1,9 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 
-namespace Saithis.CloudEventBus.EfCoreOutbox;
+namespace Saithis.CloudEventBus.EfCoreOutbox.Internal;
 
-public class OutboxMessageEntity
+internal class OutboxMessageEntity
 {
     public Guid Id { get; private set; }
     
