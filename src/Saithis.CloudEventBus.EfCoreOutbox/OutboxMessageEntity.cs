@@ -9,16 +9,18 @@ public class OutboxMessageEntity
     
     public required byte[] Content { get; init; }
 
-    public required string PropertiesAsJson { get; set; }
+    public required string PropertiesAsJson { get; init; }
     
     public required DateTimeOffset CreatedAt { get; init; }
     
     public DateTimeOffset? ProcessedAt { get; private set; }
+
+    public short ErrorCount { get; private set; } = 0;
+
+    [MaxLength(2000)] 
+    public string Error { get; private set; } = string.Empty;
     
-    public short? ErrorCount { get; private set; }
-    
-    [MaxLength(2000)]
-    public string? Error { get; private set; }
+    public DateTimeOffset? FailedAt { get; private set; }
     
     public MessageProperties GetProperties() => 
         JsonSerializer.Deserialize<MessageProperties>(PropertiesAsJson)
@@ -39,5 +41,12 @@ public class OutboxMessageEntity
     public void MarkAsProcessed(TimeProvider timeProvider)
     {
         ProcessedAt = timeProvider.GetUtcNow();
+    }
+
+    public void PublishFailed(string error, TimeProvider timeProvider)
+    {
+        ErrorCount++;
+        Error = error;
+        FailedAt = timeProvider.GetUtcNow();
     }
 }
