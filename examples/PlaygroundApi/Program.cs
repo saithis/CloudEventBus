@@ -6,6 +6,7 @@ using PlaygroundApi.Database;
 using PlaygroundApi.Database.Entities;
 using PlaygroundApi.Events;
 using Saithis.CloudEventBus;
+using Saithis.CloudEventBus.Core;
 using Saithis.CloudEventBus.EfCoreOutbox;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,6 +25,12 @@ builder.Services.AddDbContext<NotesDbContext>((sp, c) => c
 var app = builder.Build();
 
 app.MapGet("/", () => "Hello World!");
+
+app.MapPost("/send", async ([FromBody] NoteDto dto, [FromServices] ICloudEventBus bus) =>
+{
+    await bus.PublishAsync(dto, new MessageProperties());
+    return TypedResults.Ok(dto);
+});
 
 app.MapPost("/notes", async ([FromBody] NoteDto dto, [FromServices] NotesDbContext db) =>
 {

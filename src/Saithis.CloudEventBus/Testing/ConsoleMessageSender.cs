@@ -1,7 +1,8 @@
 ﻿using System.Text;
 using System.Text.Json;
+using Saithis.CloudEventBus.Core;
 
-namespace Saithis.CloudEventBus;
+namespace Saithis.CloudEventBus.Testing;
 
 public class ConsoleMessageSender() : IMessageSender
 {

@@ -1,4 +1,6 @@
-﻿namespace Saithis.CloudEventBus.EfCoreOutbox;
+﻿using Saithis.CloudEventBus.Core;
+
+namespace Saithis.CloudEventBus.EfCoreOutbox;
 
 public class OutboxStagingCollection
 {

@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Saithis.CloudEventBus.Core;
 
 namespace Saithis.CloudEventBus.EfCoreOutbox.Internal;
 

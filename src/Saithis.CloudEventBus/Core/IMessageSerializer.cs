@@ -1,4 +1,4 @@
-﻿namespace Saithis.CloudEventBus;
+﻿namespace Saithis.CloudEventBus.Core;
 
 public interface IMessageSerializer
 {

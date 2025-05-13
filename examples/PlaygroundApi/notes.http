@@ -8,3 +8,11 @@ Content-Type: application/json
 {
 "text":"This is my new note :)"
 }
+
+### POST send note
+POST http://localhost:5000/send
+Content-Type: application/json
+
+{
+  "text":"This is my new note :)"
+}

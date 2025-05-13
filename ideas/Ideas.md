@@ -1,6 +1,29 @@
 ﻿
 # Setup
 
+## Code Structure
+
+https://app.code2flow.com/
+
+```
+Send Message;
+if(Via Outbox?) {
+  Dbcontext.OutboxMessages.Add();
+  Dbcontext.SaveChangesAsync();
+  OutboxTriggerInterceptor;
+  IMessageSerializer;
+  OutboxMessageEntity.Create();
+  Add to DbContext;
+  OutboxProcessor;
+  Load Messages from DB;
+  Deserialize Properties;
+} else {
+  ICloudEventBus;
+  IMessageSerializer;
+}
+IMessageSender;
+```
+
 ## Rabbit independent
 
 * [Message("id")] or AddMessage<type>("id")

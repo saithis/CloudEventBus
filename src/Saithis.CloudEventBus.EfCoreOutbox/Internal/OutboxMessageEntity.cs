@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using Saithis.CloudEventBus.Core;
 
 namespace Saithis.CloudEventBus.EfCoreOutbox.Internal;
 

@@ -1,4 +1,6 @@
-﻿namespace Saithis.CloudEventBus.RabbitMq;
+﻿using Saithis.CloudEventBus.Core;
+
+namespace Saithis.CloudEventBus.RabbitMq;
 
 public class RabbitMqMessageSender : IMessageSender
 {
