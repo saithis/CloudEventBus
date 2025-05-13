@@ -2,7 +2,7 @@
 
 public class OutboxStagingCollection
 {
-    internal Queue<Item> Queue = new();
+    internal readonly Queue<Item> Queue = new();
 
     public void Add(object message, MessageProperties? properties = null)
     {
