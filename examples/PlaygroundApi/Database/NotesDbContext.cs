@@ -13,6 +13,6 @@ public class NotesDbContext(DbContextOptions<NotesDbContext> options) : DbContex
     {
         base.OnModelCreating(modelBuilder);
 
-        modelBuilder.Entity<OutboxMessageEntity>();
+        modelBuilder.AddOutboxEntities();
     }
 }
