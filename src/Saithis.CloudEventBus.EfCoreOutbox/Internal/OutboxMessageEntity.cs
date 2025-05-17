@@ -10,13 +10,16 @@ internal class OutboxMessageEntity
     
     public required byte[] Content { get; init; }
 
-    public required string PropertiesAsJson { get; init; }
+    /// <summary>
+    /// JSON serialized properties
+    /// </summary>
+    public required string SerializedProperties { get; init; }
     
     public required DateTimeOffset CreatedAt { get; init; }
     
     public DateTimeOffset? ProcessedAt { get; private set; }
 
-    public short ErrorCount { get; private set; } = 0;
+    public short ErrorCount { get; private set; }
 
     [MaxLength(2000)] 
     public string Error { get; private set; } = string.Empty;
@@ -24,8 +27,8 @@ internal class OutboxMessageEntity
     public DateTimeOffset? FailedAt { get; private set; }
     
     public MessageProperties GetProperties() => 
-        JsonSerializer.Deserialize<MessageProperties>(PropertiesAsJson)
-        ?? throw new MessagePropertyDeserializationOutboxException("Could not deserialize the message properties.", PropertiesAsJson);
+        JsonSerializer.Deserialize<MessageProperties>(SerializedProperties)
+        ?? throw new OutboxMessageSerializationException("Could not deserialize the message properties.", SerializedProperties);
 
     private OutboxMessageEntity(){}
     public static OutboxMessageEntity Create(byte[] message, MessageProperties props, TimeProvider timeProvider)
@@ -33,7 +36,7 @@ internal class OutboxMessageEntity
         return new OutboxMessageEntity
         {
             Id = Guid.CreateVersion7(),
-            PropertiesAsJson = JsonSerializer.Serialize(props),
+            SerializedProperties = JsonSerializer.Serialize(props),
             Content = message,
             CreatedAt = timeProvider.GetUtcNow(),
         };

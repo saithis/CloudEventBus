@@ -2,9 +2,14 @@
 
 public class MessageProperties
 {
+    /// <summary>
+    /// The type of the message, e.g. "order-shipped".
+    /// </summary>
+    /// <remarks>NOT the dotnet type.</remarks>
     public string? Type { get; init; }
     
     public string? ContentType { get; set; }
+    
     public Dictionary<string, string> Headers { get; set; } = new();
     
     /// <summary>

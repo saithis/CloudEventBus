@@ -1,5 +1,9 @@
 ﻿
-# Setup
+# Architecture
+- register channels with name, they are physical transports
+- when sending message, provide the channel name and only save this in the outbox
+- channel can be an exchange, routekey is derived from the message id
+- this might also map well to asyncapi. registered messages are operations then
 
 ## Code Structure
 
