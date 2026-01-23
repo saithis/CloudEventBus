@@ -8,6 +8,7 @@ using PlaygroundApi.Events;
 using Saithis.CloudEventBus;
 using Saithis.CloudEventBus.Core;
 using Saithis.CloudEventBus.EfCoreOutbox;
+using Saithis.CloudEventBus.RabbitMq;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +21,22 @@ builder.Services.AddSingleton<IDistributedLockProvider>(_ => new FileDistributed
 
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddMessageBus();
+
+// Use RabbitMQ when connection string is available (Aspire), otherwise use Console for testing
+var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmq");
+if (!string.IsNullOrEmpty(rabbitMqConnectionString))
+{
+    builder.Services.AddRabbitMqMessageSender(options =>
+    {
+        options.ConnectionString = rabbitMqConnectionString;
+        options.DefaultExchange = "events.topic"; // Use topic exchange for event routing
+    });
+}
+else
+{
+    builder.Services.AddConsoleMessageSender(); // For testing/development
+}
+
 builder.Services.AddOutboxPattern<NotesDbContext>();
 
 // Use PostgreSQL when connection string is available (Aspire), otherwise use InMemory
@@ -47,6 +64,12 @@ var app = builder.Build();
 
 // Map default endpoints for Aspire
 app.MapDefaultEndpoints();
+
+// Ensure RabbitMQ topic exchange exists if using RabbitMQ
+if (!string.IsNullOrEmpty(rabbitMqConnectionString))
+{
+    await EnsureRabbitMqExchangeAsync(rabbitMqConnectionString);
+}
 
 // Apply migrations if using PostgreSQL
 var dbConnectionString = app.Configuration.GetConnectionString("notesdb");
@@ -77,6 +100,13 @@ app.MapPost("/notes", async ([FromBody] NoteDto dto, [FromServices] NotesDbConte
     {
         Id = note.Id,
         Text = $"New Note: {dto.Text}",
+    }, new MessageProperties
+    {
+        Type = "note.added",
+        Extensions =
+        {
+            [RabbitMqMessageSender.RoutingKeyExtensionKey] = "notes.added"
+        }
     });
     await db.SaveChangesAsync();
     return TypedResults.Ok(note);
@@ -89,5 +119,18 @@ app.MapGet("/notes", async ([FromServices] NotesDbContext db) =>
 
 app.Run();
 
+static async Task EnsureRabbitMqExchangeAsync(string connectionString)
+{
+    using var connection = await new RabbitMQ.Client.ConnectionFactory { Uri = new Uri(connectionString) }
+        .CreateConnectionAsync();
+    using var channel = await connection.CreateChannelAsync();
+    
+    // Declare a durable topic exchange for events
+    await channel.ExchangeDeclareAsync(
+        exchange: "events.topic",
+        type: RabbitMQ.Client.ExchangeType.Topic,
+        durable: true,
+        autoDelete: false);
+}
 
 public record NoteDto(string Text);

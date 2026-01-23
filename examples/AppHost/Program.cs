@@ -1,7 +1,11 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
+// Create password parameters with default value "guest"
+var postgresPassword = builder.AddParameter("postgres-password", "guest", secret: false);
+var rabbitmqPassword = builder.AddParameter("rabbitmq-password", "guest", secret: false);
+
 // Add PostgreSQL database
-var postgres = builder.AddPostgres("postgres")
+var postgres = builder.AddPostgres("postgres", password: postgresPassword)
     .WithPgAdmin()
     .WithLifetime(ContainerLifetime.Persistent)
     .WithDataVolume("postgres-ceb");
@@ -9,7 +13,7 @@ var postgres = builder.AddPostgres("postgres")
 var notesDb = postgres.AddDatabase("notesdb");
 
 // Add RabbitMQ message broker
-var rabbitmq = builder.AddRabbitMQ("rabbitmq")
+var rabbitmq = builder.AddRabbitMQ("rabbitmq", password: rabbitmqPassword)
     .WithManagementPlugin()
     .WithLifetime(ContainerLifetime.Persistent)
     .WithDataVolume("rabbitmq-ceb");
