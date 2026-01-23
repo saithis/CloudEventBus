@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Saithis.CloudEventBus.Core;
@@ -44,6 +44,10 @@ public static class PublicApiExtensions
     /// </summary>
     public static void AddOutboxEntities(this ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<OutboxMessageEntity>();
+        modelBuilder.Entity<OutboxMessageEntity>(entity =>
+        {
+            entity.HasIndex(e => new { e.ProcessedAt, e.IsPoisoned, e.NextAttemptAt, e.CreatedAt })
+                .HasFilter("[ProcessedAt] IS NULL AND [IsPoisoned] = 0");
+        });
     }
 }

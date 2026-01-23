@@ -1,4 +1,4 @@
-﻿using Medallion.Threading;
+using Medallion.Threading;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -22,6 +22,7 @@ internal class OutboxProcessor<TDbContext>(
     /// </remarks>
     private readonly TimeSpan _lockAcquireTimeout = TimeSpan.FromSeconds(60);
     private const int BatchSize = 100;
+    private const int MaxRetries = 5;
     private CancellationTokenSource _cts = new();
     
     public Task ScheduleNowAsync()
@@ -80,8 +81,11 @@ internal class OutboxProcessor<TDbContext>(
             while (true)
             {
                 logger.LogDebug("Checking outbox for unsent messages");
+                var now = timeProvider.GetUtcNow();
                 var messages = await dbContext.Set<OutboxMessageEntity>()
-                    .Where(x => x.ProcessedAt == null)
+                    .Where(x => x.ProcessedAt == null 
+                             && !x.IsPoisoned
+                             && (x.NextAttemptAt == null || x.NextAttemptAt <= now))
                     .OrderBy(x => x.CreatedAt)
                     .Take(BatchSize)
                     .ToArrayAsync(stoppingToken);
@@ -90,20 +94,24 @@ internal class OutboxProcessor<TDbContext>(
                 if (messages.Length == 0)
                     return;
 
-                try
+                foreach (var message in messages)
                 {
-                    foreach (var message in messages)
+                    try
                     {
                         logger.LogInformation("Processing message '{Id}'", message.Id);
-                        await sender.SendAsync(message.Content,message.GetProperties(), stoppingToken);
+                        await sender.SendAsync(message.Content, message.GetProperties(), stoppingToken);
                         message.MarkAsProcessed(timeProvider);
                     }
+                    catch (Exception e)
+                    {
+                        logger.LogWarning(e, "Failed to send message '{Id}', attempt {Attempt}", 
+                            message.Id, message.ErrorCount + 1);
+                        message.PublishFailed(e.Message, timeProvider, MaxRetries);
+                    }
                 }
-                finally
-                {
-                    // We always want to save here, so that sent messages will not be sent again if possible
-                    await dbContext.SaveChangesAsync(CancellationToken.None);
-                }
+
+                // Save all changes (both successful and failed)
+                await dbContext.SaveChangesAsync(CancellationToken.None);
             }
         }
         catch (Exception e)
