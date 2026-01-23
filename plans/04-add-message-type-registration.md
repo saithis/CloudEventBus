@@ -1,5 +1,7 @@
 # Plan 04: Add Message Type Registration
 
+**STATUS: ✅ COMPLETED** (2026-01-23)
+
 ## Priority: 4 (Foundation for Routing and CloudEvents)
 
 ## Problem

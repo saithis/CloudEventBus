@@ -8,12 +8,27 @@ namespace Saithis.CloudEventBus;
 
 public static class MessageBusServiceCollectionExtensions
 {
-    public static IServiceCollection AddMessageBus(this IServiceCollection services)
+    public static IServiceCollection AddCloudEventBus(
+        this IServiceCollection services,
+        Action<CloudEventBusBuilder>? configure = null)
     {
-        // TODO: split that up and use builder pattern
+        var builder = new CloudEventBusBuilder(services);
+        configure?.Invoke(builder);
+        
+        // Freeze registry for optimal performance
+        builder.TypeRegistry.Freeze();
+        
+        services.AddSingleton(builder.TypeRegistry);
         services.AddSingleton<IMessageSerializer, JsonMessageSerializer>();
         services.AddSingleton<ICloudEventBus, CloudEventBus>();
+        
         return services;
+    }
+    
+    [Obsolete("Use AddCloudEventBus instead")]
+    public static IServiceCollection AddMessageBus(this IServiceCollection services)
+    {
+        return services.AddCloudEventBus();
     }
     
     /// <summary>

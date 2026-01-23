@@ -1,4 +1,4 @@
-﻿namespace Saithis.CloudEventBus.Core;
+namespace Saithis.CloudEventBus.Core;
 
 public class MessageProperties
 {
@@ -6,7 +6,7 @@ public class MessageProperties
     /// The type of the message, e.g. "order-shipped".
     /// </summary>
     /// <remarks>NOT the dotnet type.</remarks>
-    public string? Type { get; init; }
+    public string? Type { get; set; }
     
     public string? ContentType { get; set; }
     

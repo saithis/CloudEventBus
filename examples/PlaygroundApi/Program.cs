@@ -20,7 +20,8 @@ var lockFileDirectory = new DirectoryInfo(Environment.CurrentDirectory); // choo
 builder.Services.AddSingleton<IDistributedLockProvider>(_ => new FileDistributedSynchronizationProvider(lockFileDirectory));
 
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
-builder.Services.AddMessageBus();
+builder.Services.AddCloudEventBus(bus => bus
+    .AddMessagesFromAssemblyContaining<NoteAddedEvent>());
 
 // Use RabbitMQ when connection string is available (Aspire), otherwise use Console for testing
 var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmq");
@@ -102,7 +103,6 @@ app.MapPost("/notes", async ([FromBody] NoteDto dto, [FromServices] NotesDbConte
         Text = $"New Note: {dto.Text}",
     }, new MessageProperties
     {
-        Type = "note.added",
         Extensions =
         {
             [RabbitMqMessageSender.RoutingKeyExtensionKey] = "notes.added"
