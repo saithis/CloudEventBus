@@ -85,7 +85,15 @@ app.MapGet("/", () => "Hello World!");
 
 app.MapPost("/send", async ([FromBody] NoteDto dto, [FromServices] ICloudEventBus bus) =>
 {
-    await bus.PublishAsync(dto, new MessageProperties());
+    await bus.PublishAsync(dto, new MessageProperties
+    {
+        Type = "com.example.notes.test",
+        Source = "/playground-api",
+        Extensions =
+        {
+            [RabbitMqMessageSender.RoutingKeyExtensionKey] = "notes.test"
+        }
+    });
     return TypedResults.Ok(dto);
 });
 

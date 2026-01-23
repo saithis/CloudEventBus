@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Saithis.CloudEventBus.CloudEvents;
 using Saithis.CloudEventBus.Core;
 using Saithis.CloudEventBus.Serializers.Json;
 using Saithis.CloudEventBus.Testing;
@@ -19,7 +20,21 @@ public static class MessageBusServiceCollectionExtensions
         builder.TypeRegistry.Freeze();
         
         services.AddSingleton(builder.TypeRegistry);
-        services.AddSingleton<IMessageSerializer, JsonMessageSerializer>();
+        services.AddSingleton(builder.CloudEventsOptions);
+        
+        // Register TimeProvider if not already registered
+        services.AddSingleton(TimeProvider.System);
+        
+        // Register inner serializer
+        services.AddSingleton<JsonMessageSerializer>();
+        
+        // Register CloudEvents wrapper as the main serializer
+        services.AddSingleton<IMessageSerializer>(sp => new CloudEventsSerializer(
+            sp.GetRequiredService<JsonMessageSerializer>(),
+            sp.GetRequiredService<CloudEventsOptions>(),
+            sp.GetRequiredService<MessageTypeRegistry>(),
+            sp.GetRequiredService<TimeProvider>()));
+        
         services.AddSingleton<ICloudEventBus, CloudEventBus>();
         
         return services;

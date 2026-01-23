@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Saithis.CloudEventBus.CloudEvents;
 using Saithis.CloudEventBus.Core;
 
 namespace Saithis.CloudEventBus;
@@ -7,6 +8,7 @@ public class CloudEventBusBuilder
 {
     internal IServiceCollection Services { get; }
     internal MessageTypeRegistry TypeRegistry { get; } = new();
+    internal CloudEventsOptions CloudEventsOptions { get; } = new();
     
     internal CloudEventBusBuilder(IServiceCollection services)
     {
@@ -29,6 +31,24 @@ public class CloudEventBusBuilder
     public CloudEventBusBuilder AddMessagesFromAssemblyContaining<TMarker>()
     {
         TypeRegistry.RegisterFromAssembly(typeof(TMarker).Assembly);
+        return this;
+    }
+    
+    /// <summary>
+    /// Configures CloudEvents format options.
+    /// </summary>
+    public CloudEventBusBuilder ConfigureCloudEvents(Action<CloudEventsOptions> configure)
+    {
+        configure(CloudEventsOptions);
+        return this;
+    }
+    
+    /// <summary>
+    /// Disables CloudEvents envelope wrapping.
+    /// </summary>
+    public CloudEventBusBuilder DisableCloudEvents()
+    {
+        CloudEventsOptions.Enabled = false;
         return this;
     }
 }
