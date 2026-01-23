@@ -21,6 +21,7 @@ internal class OutboxProcessor<TDbContext>(
     /// the next round of _dbCheckDelay on another node would pick up again anyway.
     /// </remarks>
     private readonly TimeSpan _lockAcquireTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan StuckMessageThreshold = TimeSpan.FromMinutes(5);
     private const int BatchSize = 100;
     private const int MaxRetries = 5;
     private CancellationTokenSource _cts = new();
@@ -82,10 +83,13 @@ internal class OutboxProcessor<TDbContext>(
             {
                 logger.LogDebug("Checking outbox for unsent messages");
                 var now = timeProvider.GetUtcNow();
+                var stuckThreshold = now - StuckMessageThreshold;
+                
                 var messages = await dbContext.Set<OutboxMessageEntity>()
                     .Where(x => x.ProcessedAt == null 
                              && !x.IsPoisoned
-                             && (x.NextAttemptAt == null || x.NextAttemptAt <= now))
+                             && (x.NextAttemptAt == null || x.NextAttemptAt <= now)
+                             && (x.ProcessingStartedAt == null || x.ProcessingStartedAt < stuckThreshold))
                     .OrderBy(x => x.CreatedAt)
                     .Take(BatchSize)
                     .ToArrayAsync(stoppingToken);
@@ -94,6 +98,14 @@ internal class OutboxProcessor<TDbContext>(
                 if (messages.Length == 0)
                     return;
 
+                // Mark all as processing before sending
+                foreach (var message in messages)
+                {
+                    message.MarkAsProcessing(timeProvider);
+                }
+                await dbContext.SaveChangesAsync(stoppingToken);
+
+                // Now process them
                 foreach (var message in messages)
                 {
                     try

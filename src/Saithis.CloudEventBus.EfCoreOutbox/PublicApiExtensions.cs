@@ -46,8 +46,26 @@ public static class PublicApiExtensions
     {
         modelBuilder.Entity<OutboxMessageEntity>(entity =>
         {
-            entity.HasIndex(e => new { e.ProcessedAt, e.IsPoisoned, e.NextAttemptAt, e.CreatedAt })
-                .HasFilter("[ProcessedAt] IS NULL AND [IsPoisoned] = 0");
+            // Primary key (if not already configured by convention)
+            entity.HasKey(e => e.Id);
+            
+            // Index for the main query: unprocessed, not poisoned, ready to process
+            // Covers: ProcessedAt, IsPoisoned, NextAttemptAt, ProcessingStartedAt, CreatedAt
+            entity.HasIndex(
+                e => new { 
+                    e.ProcessedAt, 
+                    e.IsPoisoned, 
+                    e.NextAttemptAt, 
+                    e.ProcessingStartedAt, 
+                    e.CreatedAt 
+                },
+                "IX_OutboxMessages_Processing")
+            .HasFilter("\"ProcessedAt\" IS NULL AND \"IsPoisoned\" = false");
+            
+            // Configure column constraints
+            entity.Property(e => e.Error).HasMaxLength(2000);
+            entity.Property(e => e.Content).IsRequired();
+            entity.Property(e => e.SerializedProperties).IsRequired();
         });
     }
 }

@@ -37,6 +37,11 @@ internal class OutboxMessageEntity
     /// </summary>
     public bool IsPoisoned { get; private set; }
     
+    /// <summary>
+    /// When this message was picked up for processing. Used to detect stuck messages.
+    /// </summary>
+    public DateTimeOffset? ProcessingStartedAt { get; private set; }
+    
     public MessageProperties GetProperties() => 
         JsonSerializer.Deserialize<MessageProperties>(SerializedProperties)
         ?? throw new OutboxMessageSerializationException("Could not deserialize the message properties.", SerializedProperties);
@@ -53,9 +58,15 @@ internal class OutboxMessageEntity
         };
     }
 
+    public void MarkAsProcessing(TimeProvider timeProvider)
+    {
+        ProcessingStartedAt = timeProvider.GetUtcNow();
+    }
+    
     public void MarkAsProcessed(TimeProvider timeProvider)
     {
         ProcessedAt = timeProvider.GetUtcNow();
+        ProcessingStartedAt = null; // Clear processing flag
     }
 
     public void PublishFailed(string error, TimeProvider timeProvider, int maxRetries)
@@ -63,6 +74,7 @@ internal class OutboxMessageEntity
         ErrorCount++;
         Error = error.Length > 2000 ? error[..2000] : error;
         FailedAt = timeProvider.GetUtcNow();
+        ProcessingStartedAt = null; // Clear processing flag on failure
         
         if (ErrorCount >= maxRetries)
         {

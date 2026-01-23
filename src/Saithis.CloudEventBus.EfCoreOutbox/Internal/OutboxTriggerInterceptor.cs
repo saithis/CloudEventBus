@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Saithis.CloudEventBus.Core;
 
@@ -25,13 +25,17 @@ internal class OutboxTriggerInterceptor<TDbContext>(
         if (context is not IOutboxDbContext outboxDbContext)
             throw new InvalidOperationException("Expected IOutboxDbContext");
 
-        foreach (var item in outboxDbContext.OutboxMessages.Queue)
+        // Peek and process items - if serialization fails,
+        // successfully processed items are already removed, failed items remain
+        while (outboxDbContext.OutboxMessages.Queue.TryPeek(out var item))
         {
             var serializedMessage = messageSerializer.Serialize(item.Message, item.Properties);
             var outboxMessage = OutboxMessageEntity.Create(serializedMessage, item.Properties, timeProvider);
             context.Set<OutboxMessageEntity>().Add(outboxMessage);
+            
+            // Only dequeue after successful serialization
+            outboxDbContext.OutboxMessages.Queue.TryDequeue(out _);
         }
-        outboxDbContext.OutboxMessages.Queue.Clear();
 
         return ValueTask.FromResult(result);
     }
