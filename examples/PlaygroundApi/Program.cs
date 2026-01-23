@@ -44,15 +44,13 @@ builder.Services.AddOutboxPattern<NotesDbContext>();
 var connectionString = builder.Configuration.GetConnectionString("notesdb");
 if (!string.IsNullOrEmpty(connectionString))
 {
-    builder.AddNpgsqlDbContext<NotesDbContext>("notesdb");
-    
-    // Configure DbContext options to register the outbox
-    builder.Services.AddOptions<DbContextOptions<NotesDbContext>>()
-        .Configure<IServiceProvider>((options, sp) =>
-        {
-            var dbOptions = new DbContextOptionsBuilder<NotesDbContext>(options);
-            dbOptions.RegisterOutbox<NotesDbContext>(sp);
-        });
+    // Use AddDbContext directly to get access to IServiceProvider for interceptor registration
+    // This bypasses Aspire's AddNpgsqlDbContext but still uses the connection string from Aspire
+    builder.Services.AddDbContext<NotesDbContext>((sp, options) =>
+    {
+        options.UseNpgsql(connectionString);
+        options.RegisterOutbox<NotesDbContext>(sp);
+    });
 }
 else
 {
