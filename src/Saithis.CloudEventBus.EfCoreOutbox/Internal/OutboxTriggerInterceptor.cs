@@ -52,7 +52,7 @@ internal class OutboxTriggerInterceptor<TDbContext>(
         var outboxMessages = eventData.Context?.ChangeTracker.Entries<OutboxMessageEntity>() ?? [];
         if (outboxMessages.Any(e => e.Entity.ProcessedAt == null))
         {
-            await outboxProcessor.ScheduleNowAsync();
+            await outboxProcessor.TriggerAsync(cancellationToken);
         }
 
         return result;

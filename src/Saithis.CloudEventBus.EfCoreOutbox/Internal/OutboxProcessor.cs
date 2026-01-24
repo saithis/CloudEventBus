@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Medallion.Threading;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,12 +18,27 @@ internal class OutboxProcessor<TDbContext>(
     : BackgroundService where TDbContext : DbContext, IOutboxDbContext
 {
     private readonly OutboxOptions _options = options.Value;
-    private CancellationTokenSource _cts = new();
     
-    public Task ScheduleNowAsync()
+    // Channel for immediate triggering - bounded with capacity 1, dropping oldest if full
+    // This provides backpressure and prevents unbounded memory growth
+    private readonly Channel<byte> _triggerChannel = Channel.CreateBounded<byte>(
+        new BoundedChannelOptions(1)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false
+        });
+    
+    /// <summary>
+    /// Signals the processor to check for messages immediately.
+    /// This is a fast, non-blocking operation that writes to an in-memory channel.
+    /// </summary>
+    public ValueTask TriggerAsync(CancellationToken cancellationToken = default)
     {
-        _cts.Cancel();
-        return Task.CompletedTask;
+        // TryWrite is non-blocking; if channel is full, the signal is dropped
+        // which is fine because there's already a pending trigger
+        _triggerChannel.Writer.TryWrite(1);
+        return ValueTask.CompletedTask;
     }
     
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -34,7 +50,7 @@ internal class OutboxProcessor<TDbContext>(
             try
             {
                 await ProcessOutboxAsync(stoppingToken);
-                await WaitTillDelayOverOrTriggeredAsync(stoppingToken);
+                await WaitForTriggerOrTimeoutAsync(stoppingToken);
             }
             catch (Exception e)
             {
@@ -129,37 +145,28 @@ internal class OutboxProcessor<TDbContext>(
         }
     }
 
-    private async Task WaitTillDelayOverOrTriggeredAsync(CancellationToken stoppingToken)
+    /// <summary>
+    /// Waits for either a trigger signal from the channel or the polling interval timeout.
+    /// This provides immediate response when messages are added while still having
+    /// fallback polling for crash recovery scenarios.
+    /// </summary>
+    private async Task WaitForTriggerOrTimeoutAsync(CancellationToken stoppingToken)
     {
-        logger.LogDebug("Waiting for {Delay}", _options.PollingInterval);
+        logger.LogDebug("Waiting for trigger or {Delay} timeout", _options.PollingInterval);
 
-        // If cts was already used, we need to prepare a new one here
-        if (_cts.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
+        var channelTask = _triggerChannel.Reader.WaitToReadAsync(stoppingToken).AsTask();
+        var delayTask = Task.Delay(_options.PollingInterval, timeProvider, stoppingToken);
+
+        var completedTask = await Task.WhenAny(channelTask, delayTask);
+
+        if (completedTask == channelTask && channelTask.IsCompletedSuccessfully && channelTask.Result)
         {
-            ResetCts(stoppingToken);
+            _triggerChannel.Reader.TryRead(out _);
+            logger.LogDebug("Triggered immediately via channel");
         }
-
-        await TaskHelper.DelayWithoutExceptionAsync(_options.PollingInterval, timeProvider, _cts.Token);
-
-        if (_cts.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
+        else
         {
-            logger.LogDebug("Delay was cancelled");
-        }
-    }
-
-    private void ResetCts(CancellationToken stoppingToken)
-    {
-        _cts.Dispose();
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-    }
-
-    private static class TaskHelper
-    {
-        public static async Task DelayWithoutExceptionAsync(TimeSpan delay, TimeProvider timeProvider, CancellationToken ct)
-        {
-            // https://blog.stephencleary.com/2023/11/configureawait-in-net-8.html
-            await Task.Delay(delay, timeProvider, ct)
-                .ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing | ConfigureAwaitOptions.ContinueOnCapturedContext);
+            logger.LogDebug("Polling interval elapsed, checking for messages");
         }
     }
 }
