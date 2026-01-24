@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Saithis.CloudEventBus.Core;
 using Saithis.CloudEventBus.EfCoreOutbox.Internal;
 
@@ -12,15 +14,47 @@ namespace Saithis.CloudEventBus.EfCoreOutbox;
 public static class PublicApiExtensions
 {
     /// <summary>
-    /// Registers the background services necessary for the outbox processing for the given DbContext.
-    /// If you have multiple DbContexts, then this can be called once per DbContext.
+    /// Registers the outbox pattern with default options.
     /// </summary>
-    /// <typeparam name="TDbContext">The DbContext for which the background processing should be enabled.</typeparam>
     public static IServiceCollection AddOutboxPattern<TDbContext>(this IServiceCollection services)
         where TDbContext : DbContext, IOutboxDbContext
     {
+        return services.AddOutboxPattern<TDbContext>(configure: null);
+    }
+    
+    /// <summary>
+    /// Registers the outbox pattern with custom options via builder.
+    /// </summary>
+    public static IServiceCollection AddOutboxPattern<TDbContext>(
+        this IServiceCollection services,
+        Action<OutboxBuilder<TDbContext>>? configure)
+        where TDbContext : DbContext, IOutboxDbContext
+    {
+        var builder = new OutboxBuilder<TDbContext>(services);
+        configure?.Invoke(builder);
+        
+        // Register options
+        services.AddSingleton(Options.Create(builder.Options));
+        
         services.AddSingleton<OutboxProcessor<TDbContext>>();
         services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<OutboxProcessor<TDbContext>>());
+        
+        return services;
+    }
+    
+    /// <summary>
+    /// Registers the outbox pattern with options from configuration.
+    /// </summary>
+    public static IServiceCollection AddOutboxPattern<TDbContext>(
+        this IServiceCollection services,
+        IConfiguration configuration)
+        where TDbContext : DbContext, IOutboxDbContext
+    {
+        services.Configure<OutboxOptions>(configuration.GetSection(OutboxOptions.SectionName));
+        
+        services.AddSingleton<OutboxProcessor<TDbContext>>();
+        services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<OutboxProcessor<TDbContext>>());
+        
         return services;
     }
     

@@ -69,7 +69,7 @@ internal class OutboxMessageEntity
         ProcessingStartedAt = null; // Clear processing flag
     }
 
-    public void PublishFailed(string error, TimeProvider timeProvider, int maxRetries)
+    public void PublishFailed(string error, TimeProvider timeProvider, int maxRetries, TimeSpan maxRetryDelay)
     {
         ErrorCount++;
         Error = error.Length > 2000 ? error[..2000] : error;
@@ -83,9 +83,8 @@ internal class OutboxMessageEntity
         }
         else
         {
-            // Exponential backoff: 2^attempt seconds (2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s...)
-            // Cap at 5 minutes
-            var delaySeconds = Math.Min(Math.Pow(2, ErrorCount), 300);
+            // Exponential backoff: 2^attempt seconds, capped at maxRetryDelay
+            var delaySeconds = Math.Min(Math.Pow(2, ErrorCount), maxRetryDelay.TotalSeconds);
             NextAttemptAt = timeProvider.GetUtcNow().AddSeconds(delaySeconds);
         }
     }

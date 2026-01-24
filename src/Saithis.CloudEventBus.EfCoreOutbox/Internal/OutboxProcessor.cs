@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Saithis.CloudEventBus.Core;
 
 namespace Saithis.CloudEventBus.EfCoreOutbox.Internal;
@@ -11,19 +12,11 @@ internal class OutboxProcessor<TDbContext>(
     IServiceScopeFactory serviceScopeFactory, 
     IDistributedLockProvider distributedLockProvider, 
     TimeProvider timeProvider,
+    IOptions<OutboxOptions> options,
     ILogger<OutboxProcessor<TDbContext>> logger) 
     : BackgroundService where TDbContext : DbContext, IOutboxDbContext
 {
-    private readonly TimeSpan _dbCheckDelay = TimeSpan.FromSeconds(60);
-    private readonly TimeSpan _restartDelay = TimeSpan.FromSeconds(5);
-    /// <remarks>
-    /// This should not be longer than _dbCheckDelay, because if we cannot acquire a lock in that time,
-    /// the next round of _dbCheckDelay on another node would pick up again anyway.
-    /// </remarks>
-    private readonly TimeSpan _lockAcquireTimeout = TimeSpan.FromSeconds(60);
-    private static readonly TimeSpan StuckMessageThreshold = TimeSpan.FromMinutes(5);
-    private const int BatchSize = 100;
-    private const int MaxRetries = 5;
+    private readonly OutboxOptions _options = options.Value;
     private CancellationTokenSource _cts = new();
     
     public Task ScheduleNowAsync()
@@ -34,7 +27,7 @@ internal class OutboxProcessor<TDbContext>(
     
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Starting OutboxProcessor");
+        logger.LogInformation("Starting OutboxProcessor with options: {@Options}", _options);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -47,8 +40,9 @@ internal class OutboxProcessor<TDbContext>(
             {
                 if (stoppingToken.IsCancellationRequested)
                     break;
-                logger.LogCritical(e, "OutboxProcessor crashed, trying to restart in {Delay}", _restartDelay);
-                await Task.Delay(_restartDelay, timeProvider, stoppingToken);
+                logger.LogCritical(e, "OutboxProcessor crashed, trying to restart in {Delay}", 
+                    _options.RestartDelay);
+                await Task.Delay(_options.RestartDelay, timeProvider, stoppingToken);
                 if (stoppingToken.IsCancellationRequested)
                     break;
             }
@@ -59,10 +53,11 @@ internal class OutboxProcessor<TDbContext>(
 
     private async Task ProcessOutboxAsync(CancellationToken stoppingToken)
     {
-        logger.LogDebug("Trying to acquire distributed lock");
+        logger.LogDebug("Trying to acquire distributed lock '{LockName}'", _options.LockName);
         await using IDistributedSynchronizationHandle? dLock =
-            await distributedLockProvider.TryAcquireLockAsync("OutboxProcessor", 
-                _lockAcquireTimeout,
+            await distributedLockProvider.TryAcquireLockAsync(
+                _options.LockName, 
+                _options.LockAcquireTimeout,
                 stoppingToken);
 
         if (dLock == null)
@@ -79,11 +74,12 @@ internal class OutboxProcessor<TDbContext>(
 
             var dbContext = serviceScope.ServiceProvider.GetRequiredService<TDbContext>();
             var sender = serviceScope.ServiceProvider.GetRequiredService<IMessageSender>();
+            
             while (true)
             {
                 logger.LogDebug("Checking outbox for unsent messages");
                 var now = timeProvider.GetUtcNow();
-                var stuckThreshold = now - StuckMessageThreshold;
+                var stuckThreshold = now - _options.StuckMessageThreshold;
                 
                 var messages = await dbContext.Set<OutboxMessageEntity>()
                     .Where(x => x.ProcessedAt == null 
@@ -91,7 +87,7 @@ internal class OutboxProcessor<TDbContext>(
                              && (x.NextAttemptAt == null || x.NextAttemptAt <= now)
                              && (x.ProcessingStartedAt == null || x.ProcessingStartedAt < stuckThreshold))
                     .OrderBy(x => x.CreatedAt)
-                    .Take(BatchSize)
+                    .Take(_options.BatchSize)
                     .ToArrayAsync(stoppingToken);
 
                 logger.LogInformation("Found {Count} messages to send", messages.Length);
@@ -118,7 +114,8 @@ internal class OutboxProcessor<TDbContext>(
                     {
                         logger.LogWarning(e, "Failed to send message '{Id}', attempt {Attempt}", 
                             message.Id, message.ErrorCount + 1);
-                        message.PublishFailed(e.Message, timeProvider, MaxRetries);
+                        message.PublishFailed(e.Message, timeProvider, 
+                            _options.MaxRetries, _options.MaxRetryDelay);
                     }
                 }
 
@@ -134,7 +131,7 @@ internal class OutboxProcessor<TDbContext>(
 
     private async Task WaitTillDelayOverOrTriggeredAsync(CancellationToken stoppingToken)
     {
-        logger.LogDebug("Waiting for {Delay}", _dbCheckDelay);
+        logger.LogDebug("Waiting for {Delay}", _options.PollingInterval);
 
         // If cts was already used, we need to prepare a new one here
         if (_cts.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
@@ -142,7 +139,7 @@ internal class OutboxProcessor<TDbContext>(
             ResetCts(stoppingToken);
         }
 
-        await TaskHelper.DelayWithoutExceptionAsync(_dbCheckDelay, timeProvider, _cts.Token);
+        await TaskHelper.DelayWithoutExceptionAsync(_options.PollingInterval, timeProvider, _cts.Token);
 
         if (_cts.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
         {
