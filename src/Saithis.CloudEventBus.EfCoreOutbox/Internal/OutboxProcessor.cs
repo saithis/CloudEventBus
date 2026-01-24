@@ -91,52 +91,21 @@ internal class OutboxProcessor<TDbContext>(
             var dbContext = serviceScope.ServiceProvider.GetRequiredService<TDbContext>();
             var sender = serviceScope.ServiceProvider.GetRequiredService<IMessageSender>();
             
+            // Use shared processor logic - ensures tests and production use SAME code
+            var processor = new OutboxMessageProcessor<TDbContext>(
+                dbContext, sender, timeProvider, _options, logger);
+            
             while (true)
             {
                 logger.LogDebug("Checking outbox for unsent messages");
-                var now = timeProvider.GetUtcNow();
-                var stuckThreshold = now - _options.StuckMessageThreshold;
                 
-                var messages = await dbContext.Set<OutboxMessageEntity>()
-                    .Where(x => x.ProcessedAt == null 
-                             && !x.IsPoisoned
-                             && (x.NextAttemptAt == null || x.NextAttemptAt <= now)
-                             && (x.ProcessingStartedAt == null || x.ProcessingStartedAt < stuckThreshold))
-                    .OrderBy(x => x.CreatedAt)
-                    .Take(_options.BatchSize)
-                    .ToArrayAsync(stoppingToken);
-
-                logger.LogInformation("Found {Count} messages to send", messages.Length);
-                if (messages.Length == 0)
+                // Process one batch with stuck message detection enabled (for production)
+                var processedCount = await processor.ProcessBatchAsync(
+                    includeStuckMessageDetection: true, 
+                    stoppingToken);
+                
+                if (processedCount == 0)
                     return;
-
-                // Mark all as processing before sending
-                foreach (var message in messages)
-                {
-                    message.MarkAsProcessing(timeProvider);
-                }
-                await dbContext.SaveChangesAsync(stoppingToken);
-
-                // Now process them
-                foreach (var message in messages)
-                {
-                    try
-                    {
-                        logger.LogInformation("Processing message '{Id}'", message.Id);
-                        await sender.SendAsync(message.Content, message.GetProperties(), stoppingToken);
-                        message.MarkAsProcessed(timeProvider);
-                    }
-                    catch (Exception e)
-                    {
-                        logger.LogWarning(e, "Failed to send message '{Id}', attempt {Attempt}", 
-                            message.Id, message.ErrorCount + 1);
-                        message.PublishFailed(e.Message, timeProvider, 
-                            _options.MaxRetries, _options.MaxRetryDelay);
-                    }
-                }
-
-                // Save all changes (both successful and failed)
-                await dbContext.SaveChangesAsync(CancellationToken.None);
             }
         }
         catch (Exception e)

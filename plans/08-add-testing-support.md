@@ -1,5 +1,7 @@
 # Plan 08: Add Testing Support
 
+## Status: ✅ COMPLETED
+
 ## Priority: Foundation for Plans 09/10
 
 ## Depends On
@@ -244,7 +246,160 @@ public class AssertionException : Exception
 
 ---
 
-## Part 3: Synchronous Outbox Processor for Tests
+## Part 3: Shared Processing Logic + Synchronous Test Wrapper
+
+**Why is this needed?**
+
+The production `OutboxProcessor` runs as a `BackgroundService` with:
+- Continuous loop with timing/polling
+- Distributed locking for horizontal scaling
+- Asynchronous processing with triggers
+
+In tests, this creates challenges:
+- **Non-deterministic timing**: Don't know when processing will complete
+- **Race conditions**: Need to wait/poll for background processing
+- **Complexity**: Background threads harder to debug and clean up
+
+**Architecture to Prevent Code Drift:**
+
+To ensure tests use the EXACT SAME logic as production (preventing drift), we extract the core processing logic into a shared internal class:
+
+1. **`OutboxMessageProcessor<TDbContext>`** (Internal, Shared)
+   - Contains ALL the actual processing logic
+   - Query building, batch processing, error handling, retry logic
+   - Used by BOTH production and tests
+
+2. **`OutboxProcessor<TDbContext>`** (Production)
+   - BackgroundService wrapper
+   - Adds: distributed locking, background loop, triggers, crash recovery
+   - Delegates actual processing to `OutboxMessageProcessor`
+
+3. **`SynchronousOutboxProcessor<TDbContext>`** (Testing)
+   - Synchronous wrapper for tests
+   - Adds: explicit control, no locking, processes all messages
+   - Delegates actual processing to `OutboxMessageProcessor`
+
+**Result:** When you modify the processing logic, both production and tests automatically use the updated code. **Zero drift risk.**
+
+### Step 3a: Create Shared Processing Logic
+
+Create `src/Saithis.CloudEventBus.EfCoreOutbox/Internal/OutboxMessageProcessor.cs`:
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Saithis.CloudEventBus.Core;
+
+namespace Saithis.CloudEventBus.EfCoreOutbox.Internal;
+
+/// <summary>
+/// Core outbox message processing logic shared between production and testing.
+/// This ensures tests use the EXACT SAME logic as production - preventing drift.
+/// </summary>
+internal class OutboxMessageProcessor<TDbContext> where TDbContext : DbContext, IOutboxDbContext
+{
+    private readonly TDbContext _dbContext;
+    private readonly IMessageSender _sender;
+    private readonly TimeProvider _timeProvider;
+    private readonly OutboxOptions _options;
+    private readonly ILogger _logger;
+
+    public OutboxMessageProcessor(
+        TDbContext dbContext,
+        IMessageSender sender,
+        TimeProvider timeProvider,
+        OutboxOptions options,
+        ILogger logger)
+    {
+        _dbContext = dbContext;
+        _sender = sender;
+        _timeProvider = timeProvider;
+        _options = options;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// Processes a single batch of outbox messages.
+    /// THIS IS THE SINGLE SOURCE OF TRUTH for processing logic.
+    /// </summary>
+    public async Task<int> ProcessBatchAsync(
+        bool includeStuckMessageDetection,
+        CancellationToken cancellationToken)
+    {
+        var now = _timeProvider.GetUtcNow();
+        
+        var query = _dbContext.Set<OutboxMessageEntity>()
+            .Where(x => x.ProcessedAt == null 
+                     && !x.IsPoisoned
+                     && (x.NextAttemptAt == null || x.NextAttemptAt <= now));
+        
+        if (includeStuckMessageDetection)
+        {
+            var stuckThreshold = now - _options.StuckMessageThreshold;
+            query = query.Where(x => x.ProcessingStartedAt == null || x.ProcessingStartedAt < stuckThreshold);
+        }
+        
+        var messages = await query
+            .OrderBy(x => x.CreatedAt)
+            .Take(_options.BatchSize)
+            .ToArrayAsync(cancellationToken);
+
+        if (messages.Length == 0) return 0;
+
+        // Mark as processing
+        foreach (var message in messages)
+            message.MarkAsProcessing(_timeProvider);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var processedCount = 0;
+        
+        // Process with error handling
+        foreach (var message in messages)
+        {
+            try
+            {
+                await _sender.SendAsync(message.Content, message.GetProperties(), cancellationToken);
+                message.MarkAsProcessed(_timeProvider);
+                processedCount++;
+            }
+            catch (Exception e)
+            {
+                _logger.LogWarning(e, "Failed to send message '{Id}'", message.Id);
+                message.PublishFailed(e.Message, _timeProvider, 
+                    _options.MaxRetries, _options.MaxRetryDelay);
+            }
+        }
+
+        await _dbContext.SaveChangesAsync(CancellationToken.None);
+        return processedCount;
+    }
+}
+```
+
+### Step 3b: Update Production Processor
+
+Modify `OutboxProcessor.ProcessOutboxAsync()` to use shared logic:
+
+```csharp
+private async Task ProcessOutboxAsync(CancellationToken stoppingToken)
+{
+    // ... distributed locking code ...
+    
+    var processor = new OutboxMessageProcessor<TDbContext>(
+        dbContext, sender, timeProvider, _options, logger);
+    
+    while (true)
+    {
+        var processedCount = await processor.ProcessBatchAsync(
+            includeStuckMessageDetection: true, 
+            stoppingToken);
+        
+        if (processedCount == 0) return;
+    }
+}
+```
+
+### Step 3c: Create Test Processor Wrapper
 
 Create `src/Saithis.CloudEventBus.EfCoreOutbox/Testing/SynchronousOutboxProcessor.cs`:
 
@@ -253,67 +408,63 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Saithis.CloudEventBus.Core;
 using Saithis.CloudEventBus.EfCoreOutbox.Internal;
 
 namespace Saithis.CloudEventBus.EfCoreOutbox.Testing;
 
 /// <summary>
-/// A synchronous outbox processor for testing.
-/// Processes all pending messages immediately without background processing.
+/// Synchronous wrapper around OutboxMessageProcessor for testing.
+/// Uses the EXACT SAME processing logic as production - zero drift risk.
 /// </summary>
 public class SynchronousOutboxProcessor<TDbContext> where TDbContext : DbContext, IOutboxDbContext
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger _logger;
+    private readonly OutboxOptions _options;
+    private readonly TimeProvider _timeProvider;
     
-    public SynchronousOutboxProcessor(IServiceProvider serviceProvider, ILogger? logger = null)
+    public SynchronousOutboxProcessor(
+        IServiceProvider serviceProvider,
+        IOptions<OutboxOptions> options,
+        TimeProvider timeProvider,
+        ILogger<SynchronousOutboxProcessor<TDbContext>>? logger = null)
     {
         _serviceProvider = serviceProvider;
-        _logger = logger ?? NullLogger.Instance;
+        _options = options.Value;
+        _timeProvider = timeProvider;
+        _logger = logger ?? (ILogger)NullLogger.Instance;
     }
     
     /// <summary>
-    /// Processes all pending outbox messages synchronously.
-    /// Returns the number of messages processed.
+    /// Processes all pending messages using the EXACT SAME OutboxMessageProcessor as production.
     /// </summary>
     public async Task<int> ProcessAllAsync(CancellationToken cancellationToken = default)
     {
+        var totalProcessed = 0;
+        
         using var scope = _serviceProvider.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<TDbContext>();
         var sender = scope.ServiceProvider.GetRequiredService<IMessageSender>();
         
-        var messages = await dbContext.Set<OutboxMessageEntity>()
-            .Where(x => x.ProcessedAt == null && !x.IsPoisoned)
-            .OrderBy(x => x.CreatedAt)
-            .ToListAsync(cancellationToken);
+        // Use the SAME processor as production
+        var processor = new OutboxMessageProcessor<TDbContext>(
+            dbContext, sender, _timeProvider, _options, _logger);
         
-        var timeProvider = scope.ServiceProvider.GetService<TimeProvider>() ?? TimeProvider.System;
-        var processedCount = 0;
-        
-        foreach (var message in messages)
+        while (true)
         {
-            try
-            {
-                _logger.LogDebug("Processing outbox message {Id}", message.Id);
-                await sender.SendAsync(message.Content, message.GetProperties(), cancellationToken);
-                message.MarkAsProcessed(timeProvider);
-                processedCount++;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to process outbox message {Id}", message.Id);
-                throw; // In tests, we want failures to be visible
-            }
+            var batchProcessed = await processor.ProcessBatchAsync(
+                includeStuckMessageDetection: false,  // Not needed for synchronous tests
+                cancellationToken);
+            
+            totalProcessed += batchProcessed;
+            if (batchProcessed == 0) break;
         }
         
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return processedCount;
+        return totalProcessed;
     }
     
-    /// <summary>
-    /// Gets the count of pending (unprocessed) messages.
-    /// </summary>
     public async Task<int> GetPendingCountAsync(CancellationToken cancellationToken = default)
     {
         using var scope = _serviceProvider.CreateScope();
@@ -398,46 +549,15 @@ public static class OutboxTestingExtensions
 
 ---
 
-## Part 5: FakeTimeProvider for Testing
+## Part 5: TimeProvider Testing Support
 
-Create `src/Saithis.CloudEventBus/Testing/FakeTimeProvider.cs`:
+Use `Microsoft.Extensions.TimeProvider.Testing` package (already added to project).
 
-```csharp
-namespace Saithis.CloudEventBus.Testing;
+This provides `FakeTimeProvider` from Microsoft with the same functionality:
+- `Advance(TimeSpan)` - Move time forward
+- `SetUtcNow(DateTimeOffset)` - Set to specific time
 
-/// <summary>
-/// A controllable TimeProvider for testing time-dependent behavior.
-/// </summary>
-public class FakeTimeProvider : TimeProvider
-{
-    private DateTimeOffset _utcNow;
-    
-    public FakeTimeProvider() : this(DateTimeOffset.UtcNow) { }
-    
-    public FakeTimeProvider(DateTimeOffset initialTime)
-    {
-        _utcNow = initialTime;
-    }
-    
-    public override DateTimeOffset GetUtcNow() => _utcNow;
-    
-    /// <summary>
-    /// Advances time by the specified duration.
-    /// </summary>
-    public void Advance(TimeSpan duration)
-    {
-        _utcNow = _utcNow.Add(duration);
-    }
-    
-    /// <summary>
-    /// Sets the current time to a specific value.
-    /// </summary>
-    public void SetUtcNow(DateTimeOffset time)
-    {
-        _utcNow = time;
-    }
-}
-```
+No custom implementation needed - use the official testing package.
 
 ---
 
@@ -523,9 +643,12 @@ public class OutboxTests : IAsyncLifetime
 ### Testing Time-Dependent Behavior
 
 ```csharp
+using Microsoft.Extensions.Time.Testing;
+
 [Fact]
 public async Task Should_use_fake_time_for_timestamps()
 {
+    // Use Microsoft's official FakeTimeProvider
     var fakeTime = new FakeTimeProvider(new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.Zero));
     
     var services = new ServiceCollection();
@@ -541,6 +664,9 @@ public async Task Should_use_fake_time_for_timestamps()
     
     var sent = sender.SentMessages.First();
     Assert.Equal(fakeTime.GetUtcNow(), sent.Properties.Time);
+    
+    // Can also advance time for testing retry logic
+    fakeTime.Advance(TimeSpan.FromMinutes(5));
 }
 ```
 
@@ -551,13 +677,18 @@ public async Task Should_use_fake_time_for_timestamps()
 1. `src/Saithis.CloudEventBus/Testing/InMemoryMessageSender.cs`
 2. `src/Saithis.CloudEventBus/Testing/TestAssertions.cs`
 3. `src/Saithis.CloudEventBus/Testing/TestingServiceCollectionExtensions.cs`
-4. `src/Saithis.CloudEventBus/Testing/FakeTimeProvider.cs`
+4. `src/Saithis.CloudEventBus.EfCoreOutbox/Internal/OutboxMessageProcessor.cs` ⭐ **Shared processing logic**
 5. `src/Saithis.CloudEventBus.EfCoreOutbox/Testing/SynchronousOutboxProcessor.cs`
 6. `src/Saithis.CloudEventBus.EfCoreOutbox/Testing/OutboxTestingExtensions.cs`
 
+## Package References to Add
+
+1. `Microsoft.Extensions.TimeProvider.Testing` (v9.0.0) - Added to `Saithis.CloudEventBus.csproj`
+
 ## Files to Modify
 
-1. `src/Saithis.CloudEventBus/MessageBusServiceCollectionExtensions.cs` - Ensure TimeProvider registration doesn't override existing
+1. `src/Saithis.CloudEventBus/MessageBusServiceCollectionExtensions.cs` - Use `TryAddSingleton` for TimeProvider
+2. `src/Saithis.CloudEventBus.EfCoreOutbox/Internal/OutboxProcessor.cs` - Refactor to use shared `OutboxMessageProcessor`
 
 ---
 

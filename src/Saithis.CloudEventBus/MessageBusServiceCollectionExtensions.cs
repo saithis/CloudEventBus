@@ -22,8 +22,8 @@ public static class MessageBusServiceCollectionExtensions
         services.AddSingleton(builder.TypeRegistry);
         services.AddSingleton(builder.CloudEventsOptions);
         
-        // Register TimeProvider if not already registered
-        services.AddSingleton(TimeProvider.System);
+        // Register TimeProvider if not already registered (allows test overrides)
+        services.TryAddSingleton(TimeProvider.System);
         
         // Register inner serializer
         services.AddSingleton<JsonMessageSerializer>();

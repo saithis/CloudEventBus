@@ -91,12 +91,12 @@ The outbox pattern implementation uses an EF Core `SaveChangesInterceptor` to au
 | 05 | Implement CloudEvents Format | ✅ Completed | Structured and binary content modes |
 | 06 | Add Configuration Options | ✅ Completed | OutboxOptions, builder pattern |
 | 07 | Unify Publishing API | ✅ Completed | PublishDirectAsync vs OutboxMessages.Add |
+| 08 | Testing Support | ✅ Completed | InMemoryMessageSender, SynchronousOutboxProcessor, test assertions |
 
 ### Future Plans
 
 | Plan | Name | Status | Notes |
 |------|------|--------|-------|
-| 08 | Testing Support | Planned | InMemoryMessageSender, SynchronousOutboxProcessor, test assertions |
 | 09 | Message Consuming | Planned | IMessageHandler, RabbitMQ consumer, multiple handlers per message |
 | 10 | Inbox Pattern | Planned | Idempotent message handling via EF Core |
 
