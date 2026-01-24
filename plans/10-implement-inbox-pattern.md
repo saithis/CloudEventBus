@@ -1,9 +1,9 @@
-# Plan 09: Implement Inbox Pattern
+# Plan 10: Implement Inbox Pattern
 
-## Priority: 9 (Advanced Feature)
+## Priority: Advanced Feature
 
 ## Depends On
-- Plan 08 (Message Consuming)
+- Plan 09 (Message Consuming) - Required for handler infrastructure
 
 ## Problem
 
@@ -14,13 +14,27 @@ Message brokers provide "at-least-once" delivery, meaning the same message can b
 
 Without idempotency handling, this leads to duplicate processing (e.g., charging a customer twice).
 
+## Goals (from overview)
+- Idempotent message processing
+- Support for the inbox pattern
+- Works with horizontally scaled applications
+
 ## Solution
 
 Implement the Inbox pattern:
 1. Store processed message IDs in a database table
-2. Check if message was already processed before handling
-3. Use database transactions to ensure atomicity
+2. Use database constraints and transactions to prevent race conditions
+3. Mark message as processed BEFORE calling handler (optimistic lock via insert)
 4. Provide cleanup mechanism for old entries
+
+## Important Design Decision: Mark-Before-Handle
+
+To prevent race conditions with concurrent consumers in horizontally scaled apps:
+- **Insert inbox record first** (acts as optimistic lock)
+- If insert succeeds → process the message
+- If insert fails (duplicate key) → message already being/was processed, skip
+
+This ensures only ONE consumer can process a message, even with concurrent delivery.
 
 ---
 
@@ -141,51 +155,35 @@ Create `src/Saithis.CloudEventBus.EfCoreOutbox/Internal/InboxChecker.cs`:
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Saithis.CloudEventBus.EfCoreOutbox.Internal;
 
 /// <summary>
 /// Checks and records processed messages for idempotency.
+/// Uses "mark-before-handle" pattern for race condition safety.
 /// </summary>
 internal class InboxChecker<TDbContext> where TDbContext : DbContext, IInboxDbContext
 {
     private readonly TDbContext _dbContext;
     private readonly TimeProvider _timeProvider;
+    private readonly ILogger _logger;
     
-    public InboxChecker(TDbContext dbContext, TimeProvider timeProvider)
+    public InboxChecker(TDbContext dbContext, TimeProvider timeProvider, ILogger logger)
     {
         _dbContext = dbContext;
         _timeProvider = timeProvider;
+        _logger = logger;
     }
     
     /// <summary>
-    /// Checks if a message was already processed.
+    /// Tries to claim a message for processing by inserting into inbox.
+    /// Returns true if this consumer successfully claimed the message.
+    /// Returns false if another consumer already claimed it (duplicate).
+    /// 
+    /// This is an atomic operation - only one consumer can succeed.
     /// </summary>
-    public async Task<bool> WasProcessedAsync(string messageId, CancellationToken cancellationToken)
-    {
-        return await _dbContext.Set<InboxMessageEntity>()
-            .AnyAsync(x => x.MessageId == messageId, cancellationToken);
-    }
-    
-    /// <summary>
-    /// Marks a message as processed.
-    /// </summary>
-    public async Task MarkAsProcessedAsync(
-        string messageId, 
-        string messageType,
-        string? handlerName,
-        CancellationToken cancellationToken)
-    {
-        var entry = InboxMessageEntity.Create(messageId, messageType, _timeProvider, handlerName);
-        _dbContext.Set<InboxMessageEntity>().Add(entry);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-    }
-    
-    /// <summary>
-    /// Tries to mark as processed, returning false if already processed.
-    /// Uses database constraints to handle race conditions.
-    /// </summary>
-    public async Task<bool> TryMarkAsProcessedAsync(
+    public async Task<bool> TryClaimMessageAsync(
         string messageId,
         string messageType,
         string? handlerName,
@@ -193,14 +191,42 @@ internal class InboxChecker<TDbContext> where TDbContext : DbContext, IInboxDbCo
     {
         try
         {
-            await MarkAsProcessedAsync(messageId, messageType, handlerName, cancellationToken);
+            var entry = InboxMessageEntity.Create(messageId, messageType, _timeProvider, handlerName);
+            _dbContext.Set<InboxMessageEntity>().Add(entry);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            
+            _logger.LogDebug("Successfully claimed message '{MessageId}' for processing", messageId);
             return true;
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (IsDuplicateKeyException(ex))
         {
-            // Unique constraint violation - already processed
+            // Another consumer already claimed this message
+            _logger.LogInformation("Message '{MessageId}' already claimed by another consumer, skipping", messageId);
             return false;
         }
+    }
+    
+    /// <summary>
+    /// Removes a claim if processing failed and we want to allow retry.
+    /// Call this when you want to allow another delivery attempt.
+    /// </summary>
+    public async Task ReleaseClaimAsync(string messageId, CancellationToken cancellationToken)
+    {
+        await _dbContext.Set<InboxMessageEntity>()
+            .Where(x => x.MessageId == messageId)
+            .ExecuteDeleteAsync(cancellationToken);
+        
+        _logger.LogDebug("Released claim for message '{MessageId}'", messageId);
+    }
+    
+    private static bool IsDuplicateKeyException(DbUpdateException ex)
+    {
+        // Check for common duplicate key exception patterns
+        // PostgreSQL: 23505, SQL Server: 2627/2601, SQLite: 19
+        var message = ex.InnerException?.Message ?? ex.Message;
+        return message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase);
     }
 }
 ```
@@ -213,7 +239,6 @@ Create `src/Saithis.CloudEventBus.EfCoreOutbox/IdempotentMessageHandler.cs`:
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Saithis.CloudEventBus.Core;
 using Saithis.CloudEventBus.EfCoreOutbox.Internal;
@@ -222,6 +247,7 @@ namespace Saithis.CloudEventBus.EfCoreOutbox;
 
 /// <summary>
 /// Wraps a message handler to provide idempotency via the inbox pattern.
+/// Uses "mark-before-handle" to prevent race conditions in horizontally scaled apps.
 /// </summary>
 public class IdempotentMessageHandler<TMessage, TDbContext> : IMessageHandler<TMessage>
     where TMessage : notnull
@@ -231,38 +257,65 @@ public class IdempotentMessageHandler<TMessage, TDbContext> : IMessageHandler<TM
     private readonly TDbContext _dbContext;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger _logger;
+    private readonly InboxOptions _options;
     
     public IdempotentMessageHandler(
         IMessageHandler<TMessage> innerHandler,
         TDbContext dbContext,
         TimeProvider timeProvider,
+        InboxOptions options,
         ILogger<IdempotentMessageHandler<TMessage, TDbContext>> logger)
     {
         _innerHandler = innerHandler;
         _dbContext = dbContext;
         _timeProvider = timeProvider;
+        _options = options;
         _logger = logger;
     }
     
     public async Task HandleAsync(TMessage message, MessageContext context, CancellationToken cancellationToken)
     {
-        var checker = new InboxChecker<TDbContext>(_dbContext, _timeProvider);
+        var checker = new InboxChecker<TDbContext>(_dbContext, _timeProvider, _logger);
+        var handlerName = _innerHandler.GetType().Name;
         
-        // Check if already processed
-        if (await checker.WasProcessedAsync(context.Id, cancellationToken))
+        // Try to claim the message (insert into inbox)
+        // If this fails, another consumer already claimed it
+        var claimed = await checker.TryClaimMessageAsync(
+            context.Id, context.Type, handlerName, cancellationToken);
+        
+        if (!claimed)
         {
             _logger.LogInformation(
-                "Message '{MessageId}' was already processed, skipping", 
+                "Message '{MessageId}' already claimed by another consumer, skipping", 
                 context.Id);
             return;
         }
         
-        // Process the message
-        await _innerHandler.HandleAsync(message, context, cancellationToken);
-        
-        // Mark as processed (uses DB constraint for race condition safety)
-        var handlerName = _innerHandler.GetType().Name;
-        await checker.TryMarkAsProcessedAsync(context.Id, context.Type, handlerName, cancellationToken);
+        try
+        {
+            // We have the claim - process the message
+            await _innerHandler.HandleAsync(message, context, cancellationToken);
+            _logger.LogDebug("Successfully processed message '{MessageId}'", context.Id);
+        }
+        catch (Exception ex)
+        {
+            // Handler failed - decide whether to release the claim for retry
+            if (_options.ReleaseClaimOnError)
+            {
+                _logger.LogWarning(ex, 
+                    "Handler failed for message '{MessageId}', releasing claim for retry", 
+                    context.Id);
+                await checker.ReleaseClaimAsync(context.Id, cancellationToken);
+            }
+            else
+            {
+                _logger.LogError(ex, 
+                    "Handler failed for message '{MessageId}', keeping claim (no retry)", 
+                    context.Id);
+            }
+            
+            throw; // Re-throw so broker can nack/retry
+        }
     }
 }
 ```
@@ -365,6 +418,18 @@ public class InboxOptions
     /// Whether inbox pattern is enabled. Default: true.
     /// </summary>
     public bool Enabled { get; set; } = true;
+    
+    /// <summary>
+    /// Whether to release the inbox claim when a handler throws an exception.
+    /// 
+    /// If true: The claim is released, allowing the message to be redelivered and retried.
+    /// If false: The claim is kept, preventing duplicate processing even on failure.
+    /// 
+    /// Default: false (fail-safe, prevents duplicate processing)
+    /// 
+    /// Set to true if your handlers are designed to be safely retried.
+    /// </summary>
+    public bool ReleaseClaimOnError { get; set; } = false;
 }
 ```
 
@@ -447,18 +512,36 @@ services.AddCloudEventBus(bus => bus
 
 ---
 
+## Package Naming Consideration
+
+**Question from overview**: Should `Saithis.CloudEventBus.EfCoreOutbox` be renamed to `Saithis.CloudEventBus.EfCore`?
+
+**Recommendation**: Yes, rename to `Saithis.CloudEventBus.EfCore` since it will contain:
+- Outbox pattern (sending)
+- Inbox pattern (receiving)
+- Shared EF Core infrastructure
+
+This is a breaking change but makes more sense architecturally.
+
+---
+
 ## Testing Considerations
 
-- Test duplicate messages are skipped
-- Test race condition handling with concurrent consumers
+- Test duplicate messages are skipped (second insert fails)
+- Test race condition handling with concurrent consumers (parallel test)
+- Test `ReleaseClaimOnError = true` releases claim on failure
+- Test `ReleaseClaimOnError = false` keeps claim on failure
 - Test cleanup removes old entries
 - Test retention period is respected
-- Integration test with real database
+- Integration test with real database (PostgreSQL, SQL Server)
+- Test with InMemory database (note: unique constraints may behave differently)
 
 ## Migration Required
 
 New table `InboxMessages` with:
-- `MessageId` (string, primary key)
+- `MessageId` (string, primary key) - ensures uniqueness
 - `MessageType` (string)
 - `ProcessedAt` (DateTimeOffset)
 - `HandlerName` (string, nullable)
+
+Index on `ProcessedAt` for efficient cleanup queries.

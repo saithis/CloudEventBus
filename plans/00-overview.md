@@ -5,94 +5,106 @@
 The project has three main components:
 - **Saithis.CloudEventBus** - Core library with interfaces and basic implementations
 - **Saithis.CloudEventBus.EfCoreOutbox** - EF Core outbox pattern with interceptor-based approach
-- **Saithis.CloudEventBus.RabbitMq** - RabbitMQ sender (placeholder only)
+- **Saithis.CloudEventBus.RabbitMq** - RabbitMQ sender
 
 The outbox pattern implementation uses an EF Core `SaveChangesInterceptor` to automatically convert staged messages to outbox entities, and a background processor with distributed locking.
 
-## Goals
+## Current goals
 
-- Works well with RabbitMq, but could theoretically also work with Kafka, Azure ServiceBus, etc.
-- Implements the Outbox pattern
-- Should in the future also support the inbox pattern
-- Has very good integration with EfCore
-- Should send messages as CloudEvents, but could also work without it
-- Should make it easy for users to write tests for sending/receiving events
-- Performance is good
-- Latency for sending messages is very low
-- Has good error handling and recovery
-- Should in the future have a nice UI to see the status of the inbox/outbox and recover messages
+### General:
 
----
+- Exceptional developer experience in combination RabbitMq and EfCore
+- Could also work with Kafka, etc.
+- Should send messages as CloudEvents by default, but can be disabled globally/per message
+- Very good error handling and recovery
+- Works with horrizontally scaled applications
 
-## Identified Problems
+### Saithis.CloudEventBus:
 
-### Critical Bugs
+- Generic implementation of event/message sending/receiving
+- Support for different message serializers with a default one and overwritable per message
+- Support for different broker types (RabbitMQ, Kafka, etc.)
 
-1. **Outbox error handling is broken** - Messages that fail to send retry forever with no backoff or dead-letter handling
-2. **Serialization failure causes duplicates** - If serialization fails mid-loop, successfully processed items can be duplicated on retry
-3. **Race condition risk** - Potential for duplicate message sends if distributed lock times out
+### Saithis.CloudEventBus.RabbitMq:
 
-### Missing Core Functionality
+- RabbitMq implementations
 
-4. **RabbitMQ sender not implemented** - Only a placeholder exists
-5. **No message type identification** - No way to identify message types for routing/deserialization
-6. **No CloudEvents format** - Despite the name, no CloudEvents envelope is generated
-7. **No message consuming support** - Only publishing is implemented
+### Saithis.CloudEventBus.EfCoreOutbox:
 
-### Usability Issues
+- Implements the Outbox pattern via EfCore 
+- Exceptional developer experience
+- Low latency
+- Low resource usage
 
-8. **Two conflicting publishing APIs** - Direct via `ICloudEventBus` and via `DbContext.OutboxMessages`
-9. **No configuration options** - Hard-coded values for batch size, delays, retries
-10. **No database indexes** - Full table scans as outbox grows
+## Future goals
 
-### Missing Advanced Features
+### Message consumption
 
-11. **No inbox pattern** - Needed for idempotent message processing
-12. **No observability** - No correlation IDs, OpenTelemetry, or metrics
+- Support for multiple handlers of the same message
+- Support for the inbox pattern
+- Idempotent message processing
 
----
+### Observabillity
 
-## Improvement Plan (Ordered by Priority)
+- metrics
+- traces
 
-| # | Plan File | Description |
-|---|-----------|-------------|
-| 1 | `01-fix-outbox-error-handling.md` | Fix retry logic, add max retries, exponential backoff, dead-letter state |
-| 2 | `02-fix-outbox-reliability.md` | Fix serialization loop issue, add processing state, add database indexes |
-| 3 | `03-implement-rabbitmq-sender.md` | Implement the actual RabbitMQ message sender |
-| 4 | `04-add-message-type-registration.md` | Add message type registration via attributes and fluent API |
-| 5 | `05-implement-cloudevents-format.md` | Implement proper CloudEvents envelope format |
-| 6 | `06-add-configuration-options.md` | Add builder pattern and options classes for configuration |
-| 7 | `07-unify-publishing-api.md` | Clarify the two publishing paths (Option B: explicit separation) |
-| 8 | `08-add-message-consuming.md` | Add message handler interface and consumer infrastructure |
-| 9 | `09-implement-inbox-pattern.md` | Add inbox pattern for idempotent message processing |
+### Testing
 
----
+- Make it easy for users to write tests for sending/receiving events/messages
+- InMemoryMessageSender that collects messages for assertions
+- FakeOutboxProcessor that processes synchronously for tests
+- Test helpers like bus.ShouldHavePublished<T>(predicate)
 
-## Design Decisions
+### Tests
 
-### Publishing API (Plan 07)
-**Decision: Option B - Explicit Separation**
-- `ICloudEventBus.PublishAsync()` for immediate publishing (no transactional guarantee)
-- `DbContext.OutboxMessages.Add()` for outbox-based publishing (transactional)
+- Test everything properly
+- Prefer integration/e2e tests
+- Use unit tests only for specific cases where it makes more sense than integration/e2e tests
 
-Both approaches have valid use cases. Direct publishing is useful for fire-and-forget scenarios where you don't need transactional guarantees.
+### RabbitMq auto provision
 
----
+- Auto provision queues/exchanges
+- Dead letter queue configuration
 
-## Dependencies Between Plans
+### UI
 
-```
-Plan 01 (Error Handling) ──┐
-                           ├──> Plan 03 (RabbitMQ) ──> Plan 04 (Message Types) ──> Plan 05 (CloudEvents)
-Plan 02 (Reliability) ─────┘                                    │
-                                                                v
-Plan 06 (Configuration) ────────────────────────────────> Plan 07 (Unify API)
-                                                                │
-                                                                v
-                                                    Plan 08 (Consuming) ──> Plan 09 (Inbox)
-```
+- See the status of the inbox/outbox
+- Requeue of poisoned messages
 
-Plans 01-02 fix critical bugs and should be done first.
-Plans 03-05 build the core message pipeline.
-Plans 06-07 improve usability.
-Plans 08-09 add consuming capabilities.
+### AsyncApi support
+
+- Also make it possible to show to which channel incoming messages belong
+
+### Documentation
+
+## Implementation Plans
+
+### Completed Plans
+
+| Plan | Name | Status | Notes |
+|------|------|--------|-------|
+| 01 | Fix Outbox Error Handling | ✅ Completed | Retry logic, exponential backoff, poison messages |
+| 02 | Fix Outbox Reliability | ✅ Completed | Processing state, stuck message recovery, indexes |
+| 03 | Implement RabbitMQ Sender | ✅ Completed | Connection management, publisher confirms |
+| 04 | Add Message Type Registration | ✅ Completed | [CloudEvent] attribute, MessageTypeRegistry |
+| 05 | Implement CloudEvents Format | ✅ Completed | Structured and binary content modes |
+| 06 | Add Configuration Options | ✅ Completed | OutboxOptions, builder pattern |
+| 07 | Unify Publishing API | ✅ Completed | PublishDirectAsync vs OutboxMessages.Add |
+
+### Future Plans
+
+| Plan | Name | Status | Notes |
+|------|------|--------|-------|
+| 08 | Testing Support | Planned | InMemoryMessageSender, SynchronousOutboxProcessor, test assertions |
+| 09 | Message Consuming | Planned | IMessageHandler, RabbitMQ consumer, multiple handlers per message |
+| 10 | Inbox Pattern | Planned | Idempotent message handling via EF Core |
+
+### Execution Order
+1. **Plan 08** - Testing support makes it easier to test Plans 09/10
+2. **Plan 09** - Foundation for receiving messages
+3. **Plan 10** - Builds on message consuming infrastructure
+
+## Questions
+
+- Should Saithis.CloudEventBus.EfCoreOutbox be renamed to Saithis.CloudEventBus.EfCore for inbox pattern or should it be a separate package?

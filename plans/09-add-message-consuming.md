@@ -1,11 +1,12 @@
-# Plan 08: Add Message Consuming Support
+# Plan 09: Add Message Consuming Support
 
-## Priority: 8 (Major Feature)
+## Priority: Major Feature
 
 ## Depends On
-- Plan 03 (RabbitMQ Sender - for understanding transport layer)
-- Plan 04 (Message Type Registration - for type resolution)
-- Plan 05 (CloudEvents Format - for deserialization)
+- Core library with CloudEvents serialization (✅ implemented)
+- Message type registry (✅ implemented)
+- RabbitMQ sender (✅ implemented - for understanding transport layer)
+- Plan 08 (Testing Support) - InMemoryMessageSender and test helpers make testing consumption easier
 
 ## Problem
 
@@ -15,14 +16,20 @@ The library only supports publishing messages. There's no way to:
 - Handle messages with business logic
 - Configure which queues/topics to listen to
 
+## Goals (from overview)
+- Support for multiple handlers of the same message type
+- Works with horizontally scaled applications
+- Very good error handling and recovery
+
 ## Solution
 
 Implement a complete message consuming infrastructure:
 1. `IMessageHandler<T>` interface for handlers
-2. Message handler registry
-3. Message deserializer that uses type registry
+2. Message handler registry supporting **multiple handlers per message type**
+3. Message deserializer that uses existing type registry
 4. RabbitMQ consumer with queue listeners
 5. Hosting integration for background consumers
+6. Consumer health checks
 
 ---
 
@@ -172,15 +179,17 @@ namespace Saithis.CloudEventBus.Core;
 
 /// <summary>
 /// Registry of message handlers mapped by event type.
+/// Supports multiple handlers per message type.
 /// </summary>
 public class MessageHandlerRegistry
 {
-    private readonly Dictionary<string, HandlerRegistration> _handlers = new();
-    private FrozenDictionary<string, HandlerRegistration>? _frozen;
+    private readonly Dictionary<string, List<HandlerRegistration>> _handlers = new();
+    private FrozenDictionary<string, IReadOnlyList<HandlerRegistration>>? _frozen;
     private bool _isFrozen;
     
     /// <summary>
     /// Registers a handler for an event type.
+    /// Multiple handlers can be registered for the same event type.
     /// </summary>
     public void Register<TMessage, THandler>(string eventType)
         where TMessage : notnull
@@ -188,10 +197,16 @@ public class MessageHandlerRegistry
     {
         EnsureNotFrozen();
         
-        _handlers[eventType] = new HandlerRegistration(
+        if (!_handlers.TryGetValue(eventType, out var handlers))
+        {
+            handlers = new List<HandlerRegistration>();
+            _handlers[eventType] = handlers;
+        }
+        
+        handlers.Add(new HandlerRegistration(
             typeof(TMessage),
             typeof(THandler),
-            typeof(IMessageHandler<TMessage>));
+            typeof(IMessageHandler<TMessage>)));
     }
     
     /// <summary>
@@ -200,18 +215,21 @@ public class MessageHandlerRegistry
     public void Freeze()
     {
         if (_isFrozen) return;
-        _frozen = _handlers.ToFrozenDictionary();
+        _frozen = _handlers.ToFrozenDictionary(
+            kvp => kvp.Key, 
+            kvp => (IReadOnlyList<HandlerRegistration>)kvp.Value);
         _isFrozen = true;
     }
     
     /// <summary>
-    /// Gets the handler registration for an event type.
+    /// Gets all handler registrations for an event type.
+    /// Returns empty list if no handlers registered.
     /// </summary>
-    public HandlerRegistration? GetHandler(string eventType)
+    public IReadOnlyList<HandlerRegistration> GetHandlers(string eventType)
     {
         if (_isFrozen)
-            return _frozen!.GetValueOrDefault(eventType);
-        return _handlers.GetValueOrDefault(eventType);
+            return _frozen!.GetValueOrDefault(eventType) ?? [];
+        return _handlers.GetValueOrDefault(eventType) ?? [];
     }
     
     /// <summary>
@@ -250,7 +268,8 @@ using Microsoft.Extensions.Logging;
 namespace Saithis.CloudEventBus.Core;
 
 /// <summary>
-/// Dispatches incoming messages to their registered handlers.
+/// Dispatches incoming messages to all registered handlers.
+/// Supports multiple handlers per message type.
 /// </summary>
 public class MessageDispatcher
 {
@@ -275,44 +294,66 @@ public class MessageDispatcher
     }
     
     /// <summary>
-    /// Dispatches a message to its handler.
+    /// Dispatches a message to all registered handlers.
+    /// All handlers run in the same DI scope.
     /// </summary>
-    public async Task<bool> DispatchAsync(byte[] body, MessageContext context, CancellationToken cancellationToken)
+    public async Task<DispatchResult> DispatchAsync(byte[] body, MessageContext context, CancellationToken cancellationToken)
     {
-        var registration = _handlerRegistry.GetHandler(context.Type);
-        if (registration == null)
+        var registrations = _handlerRegistry.GetHandlers(context.Type);
+        if (registrations.Count == 0)
         {
-            _logger.LogWarning("No handler registered for event type '{EventType}'", context.Type);
-            return false;
+            _logger.LogWarning("No handlers registered for event type '{EventType}'", context.Type);
+            return DispatchResult.NoHandlers;
         }
         
-        try
+        // All handlers share the same message type, so deserialize once
+        var messageType = registrations[0].MessageType;
+        var message = _deserializer.Deserialize(body, messageType, context);
+        if (message == null)
         {
-            var message = _deserializer.Deserialize(body, registration.MessageType, context);
-            if (message == null)
+            _logger.LogError("Failed to deserialize message of type '{EventType}'", context.Type);
+            return DispatchResult.DeserializationFailed;
+        }
+        
+        using var scope = _scopeFactory.CreateScope();
+        var errors = new List<Exception>();
+        
+        foreach (var registration in registrations)
+        {
+            try
             {
-                _logger.LogError("Failed to deserialize message of type '{EventType}'", context.Type);
-                return false;
+                var handler = scope.ServiceProvider.GetRequiredService(registration.HandlerInterfaceType);
+                var handleMethod = registration.HandlerInterfaceType.GetMethod("HandleAsync")!;
+                var task = (Task)handleMethod.Invoke(handler, [message, context, cancellationToken])!;
+                await task;
+                
+                _logger.LogDebug("Handler '{Handler}' processed message '{Id}' of type '{Type}'", 
+                    registration.HandlerType.Name, context.Id, context.Type);
             }
-            
-            using var scope = _scopeFactory.CreateScope();
-            var handler = scope.ServiceProvider.GetRequiredService(registration.HandlerInterfaceType);
-            
-            var handleMethod = registration.HandlerInterfaceType.GetMethod("HandleAsync")!;
-            var task = (Task)handleMethod.Invoke(handler, [message, context, cancellationToken])!;
-            await task;
-            
-            _logger.LogDebug("Successfully handled message '{Id}' of type '{Type}'", 
-                context.Id, context.Type);
-            return true;
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Handler '{Handler}' failed for message '{Id}' of type '{Type}'", 
+                    registration.HandlerType.Name, context.Id, context.Type);
+                errors.Add(ex);
+            }
         }
-        catch (Exception ex)
+        
+        if (errors.Count > 0)
         {
-            _logger.LogError(ex, "Error handling message '{Id}' of type '{Type}'", 
-                context.Id, context.Type);
-            throw;
+            // If some handlers succeeded and some failed, throw aggregate
+            throw new AggregateException(
+                $"One or more handlers failed for message '{context.Id}'", errors);
         }
+        
+        return DispatchResult.Success;
     }
+}
+
+public enum DispatchResult
+{
+    Success,
+    NoHandlers,
+    DeserializationFailed
 }
 ```
 
@@ -434,18 +475,25 @@ public class RabbitMqConsumer : BackgroundService
         try
         {
             var context = BuildMessageContext(ea);
-            var success = await _dispatcher.DispatchAsync(ea.Body.ToArray(), context, cancellationToken);
+            var result = await _dispatcher.DispatchAsync(ea.Body.ToArray(), context, cancellationToken);
             
             if (!_options.AutoAck)
             {
-                if (success)
+                switch (result)
                 {
-                    await channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken);
-                }
-                else
-                {
-                    // No handler found - reject without requeue
-                    await channel.BasicNackAsync(ea.DeliveryTag, false, false, cancellationToken);
+                    case DispatchResult.Success:
+                        await channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken);
+                        break;
+                    case DispatchResult.NoHandlers:
+                        // No handler found - reject without requeue (goes to DLQ if configured)
+                        _logger.LogWarning("No handler for message '{MessageId}', rejecting", messageId);
+                        await channel.BasicNackAsync(ea.DeliveryTag, false, false, cancellationToken);
+                        break;
+                    case DispatchResult.DeserializationFailed:
+                        // Can't deserialize - reject without requeue (poison message)
+                        _logger.LogError("Failed to deserialize message '{MessageId}', rejecting", messageId);
+                        await channel.BasicNackAsync(ea.DeliveryTag, false, false, cancellationToken);
+                        break;
                 }
             }
         }
@@ -455,7 +503,8 @@ public class RabbitMqConsumer : BackgroundService
             
             if (!_options.AutoAck)
             {
-                // Requeue for retry
+                // Handler threw - requeue for retry
+                // TODO: Consider retry count header to avoid infinite loops
                 await channel.BasicNackAsync(ea.DeliveryTag, false, true, cancellationToken);
             }
         }
@@ -660,19 +709,62 @@ services.AddRabbitMqConsumer(consumer =>
 
 ---
 
+## Part 5: Health Checks (Optional)
+
+Create `src/Saithis.CloudEventBus.RabbitMq/RabbitMqConsumerHealthCheck.cs`:
+
+```csharp
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+
+namespace Saithis.CloudEventBus.RabbitMq;
+
+public class RabbitMqConsumerHealthCheck : IHealthCheck
+{
+    private readonly RabbitMqConsumer _consumer;
+    
+    public RabbitMqConsumerHealthCheck(RabbitMqConsumer consumer)
+    {
+        _consumer = consumer;
+    }
+    
+    public Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context, 
+        CancellationToken cancellationToken = default)
+    {
+        // Check if consumer is running and channels are healthy
+        if (_consumer.IsHealthy)
+        {
+            return Task.FromResult(HealthCheckResult.Healthy("RabbitMQ consumer is running"));
+        }
+        
+        return Task.FromResult(HealthCheckResult.Unhealthy("RabbitMQ consumer is not healthy"));
+    }
+}
+```
+
+Add `IsHealthy` property to `RabbitMqConsumer`:
+
+```csharp
+public bool IsHealthy => _channels.Count > 0 && _channels.All(c => c.IsOpen);
+```
+
+---
+
 ## Testing Considerations
 
-- Unit test handler registration
-- Unit test message dispatching
+- Unit test handler registration (including multiple handlers)
+- Unit test message dispatching with multiple handlers
 - Unit test CloudEvents deserialization (both structured and binary)
 - Integration test with RabbitMQ consuming real messages
 - Test error handling and nack behavior
 - Test handler DI scoping (scoped services per message)
+- Test that all handlers run even if one fails (aggregate exception)
 
 ## Future Enhancements
 
-- Dead letter queue handling
+- Dead letter queue handling with retry headers
 - Message filtering by event type
 - Batch message handling
-- Parallel message processing
-- Consumer health checks
+- Parallel message processing within a batch
+- Circuit breaker for failing handlers
+- Metrics (messages processed, failed, latency)
