@@ -7,7 +7,29 @@ public class CloudEventBus(
     IMessageSender sender,
     MessageTypeRegistry typeRegistry) : ICloudEventBus
 {
-    public async Task PublishAsync<TMessage>(TMessage message, MessageProperties? props = null, CancellationToken cancellationToken = default)
+    public Task PublishDirectAsync<TMessage>(
+        TMessage message, 
+        MessageProperties? props = null, 
+        CancellationToken cancellationToken = default)
+        where TMessage : notnull
+    {
+        return PublishInternalAsync(message, props, cancellationToken);
+    }
+
+    [Obsolete("Use PublishDirectAsync to make the non-transactional nature explicit")]
+    public Task PublishAsync<TMessage>(
+        TMessage message, 
+        MessageProperties? props = null, 
+        CancellationToken cancellationToken = default)
+        where TMessage : notnull
+    {
+        return PublishInternalAsync(message, props, cancellationToken);
+    }
+
+    private async Task PublishInternalAsync<TMessage>(
+        TMessage message, 
+        MessageProperties? props,
+        CancellationToken cancellationToken)
         where TMessage : notnull
     {
         props ??= new MessageProperties();

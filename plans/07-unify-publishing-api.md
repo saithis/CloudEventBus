@@ -1,5 +1,7 @@
 # Plan 07: Unify Publishing API (Option B: Explicit Separation)
 
+**Status: ✅ COMPLETED**
+
 ## Priority: 7 (API Clarity)
 
 ## Depends On
