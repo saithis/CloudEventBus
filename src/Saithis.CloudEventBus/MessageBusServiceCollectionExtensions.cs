@@ -43,12 +43,6 @@ public static class MessageBusServiceCollectionExtensions
         return services;
     }
     
-    [Obsolete("Use AddCloudEventBus instead")]
-    public static IServiceCollection AddMessageBus(this IServiceCollection services)
-    {
-        return services.AddCloudEventBus();
-    }
-    
     /// <summary>
     /// Adds the console message sender for testing/development purposes.
     /// Messages are written to the console instead of being sent to a real message broker.

@@ -21,14 +21,4 @@ public interface ICloudEventBus
         MessageProperties? props = null, 
         CancellationToken cancellationToken = default)
         where TMessage : notnull;
-
-    /// <summary>
-    /// Publishes a message immediately without transactional guarantees.
-    /// </summary>
-    [Obsolete("Use PublishDirectAsync to make the non-transactional nature explicit")]
-    Task PublishAsync<TMessage>(
-        TMessage message, 
-        MessageProperties? props = null, 
-        CancellationToken cancellationToken = default)
-        where TMessage : notnull;
 }
