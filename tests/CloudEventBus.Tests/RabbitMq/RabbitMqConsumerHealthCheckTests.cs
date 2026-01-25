@@ -93,8 +93,7 @@ public class TestRabbitMqConsumer : RabbitMqConsumer
         // Create minimal dispatcher for testing
         var handlerRegistry = new MessageHandlerRegistry();
         var typeRegistry = new MessageTypeRegistry();
-        var deserializer = new Saithis.CloudEventBus.Serializers.Json.JsonMessageDeserializer(
-            new Saithis.CloudEventBus.CloudEvents.CloudEventsOptions());
+        var deserializer = new Saithis.CloudEventBus.Serializers.Json.JsonMessageSerializer();
         var services = new ServiceCollection();
         var provider = services.BuildServiceProvider();
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();

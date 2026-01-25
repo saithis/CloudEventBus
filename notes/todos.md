@@ -15,12 +15,10 @@
 - Support cloud events extensions.
 - Support cloud events extensions in deserialization.
 - Allow single messages to opt-in/out of cloud events.
+- Detect cloud events wrapper automatically in deserializer.
+- Propper tests for cloud events serializer
 
 ## DX
-
-### Combine serializer and deserializer
-
-- Combine serializer and deserializer into a single interface.
 
 ### Improve config APIs
 

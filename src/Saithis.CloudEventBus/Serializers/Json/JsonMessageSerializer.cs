@@ -12,4 +12,14 @@ public class JsonMessageSerializer : IMessageSerializer
         messageProperties.ContentType = "application/json";
         return Encoding.UTF8.GetBytes(json);
     }
+    
+    public object? Deserialize(byte[] body, Type targetType, MessageContext context)
+    {
+        return JsonSerializer.Deserialize(body, targetType);
+    }
+    
+    public TMessage? Deserialize<TMessage>(byte[] body, MessageContext context)
+    {
+        return (TMessage?)Deserialize(body, typeof(TMessage), context);
+    }
 }

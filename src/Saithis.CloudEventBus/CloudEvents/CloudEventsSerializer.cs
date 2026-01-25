@@ -53,6 +53,33 @@ public class CloudEventsSerializer : IMessageSerializer
         };
     }
     
+    
+    public object? Deserialize(byte[] body, Type targetType, MessageContext context)
+    {
+        // TODO: detect cloud events automatically from the message context (content type header, etc.)
+        if (_options.Enabled && 
+            _options.ContentMode == CloudEventsContentMode.Structured)
+        {
+            // Parse CloudEvents envelope and extract data
+            var envelope = JsonSerializer.Deserialize<CloudEventEnvelope>(body);
+            if (envelope?.Data != null)
+            {
+                // Data is already deserialized as JsonElement, need to convert
+                var dataJson = JsonSerializer.Serialize(envelope.Data);
+                return JsonSerializer.Deserialize(dataJson, targetType);
+            }
+            return null;
+        }
+        
+        // Binary mode or CloudEvents disabled - body is the raw data
+        return JsonSerializer.Deserialize(body, targetType);
+    }
+    
+    public TMessage? Deserialize<TMessage>(byte[] body, MessageContext context)
+    {
+        return (TMessage?)Deserialize(body, typeof(TMessage), context);
+    }
+    
     private byte[] SerializeStructured(object message, MessageProperties props)
     {
         // First serialize the data

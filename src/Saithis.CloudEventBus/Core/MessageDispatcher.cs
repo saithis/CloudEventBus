@@ -11,14 +11,14 @@ public class MessageDispatcher
 {
     private readonly MessageHandlerRegistry _handlerRegistry;
     private readonly MessageTypeRegistry _typeRegistry;
-    private readonly IMessageDeserializer _deserializer;
+    private readonly IMessageSerializer _deserializer;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<MessageDispatcher> _logger;
     
     public MessageDispatcher(
         MessageHandlerRegistry handlerRegistry,
         MessageTypeRegistry typeRegistry,
-        IMessageDeserializer deserializer,
+        IMessageSerializer deserializer,
         IServiceScopeFactory scopeFactory,
         ILogger<MessageDispatcher> logger)
     {

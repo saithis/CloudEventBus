@@ -287,8 +287,7 @@ public class MessageDispatcherTests
         typeRegistry.Register<TestEvent>("test.event");
         typeRegistry.Freeze();
         
-        var cloudEventsOptions = new CloudEventsOptions { Enabled = false };
-        var deserializer = new JsonMessageDeserializer(cloudEventsOptions);
+        var deserializer = new JsonMessageSerializer();
         
         var provider = services.BuildServiceProvider();
         var scopeFactory = provider.GetService<IServiceScopeFactory>() 

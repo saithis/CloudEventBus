@@ -29,14 +29,11 @@ public static class MessageBusServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         
         // Register inner serializer
-        services.AddSingleton<JsonMessageSerializer>();
-        
-        // Register deserializer
-        services.AddSingleton<IMessageDeserializer, JsonMessageDeserializer>();
+        services.AddKeyedSingleton<IMessageSerializer, JsonMessageSerializer>("inner");
         
         // Register CloudEvents wrapper as the main serializer
         services.AddSingleton<IMessageSerializer>(sp => new CloudEventsSerializer(
-            sp.GetRequiredService<JsonMessageSerializer>(),
+            sp.GetRequiredKeyedService<IMessageSerializer>("inner"),
             sp.GetRequiredService<CloudEventsOptions>(),
             sp.GetRequiredService<MessageTypeRegistry>(),
             sp.GetRequiredService<TimeProvider>()));
