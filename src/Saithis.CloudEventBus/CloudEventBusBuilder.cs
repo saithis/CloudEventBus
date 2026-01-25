@@ -9,6 +9,7 @@ public class CloudEventBusBuilder
     internal IServiceCollection Services { get; }
     internal MessageTypeRegistry TypeRegistry { get; } = new();
     internal CloudEventsOptions CloudEventsOptions { get; } = new();
+    internal MessageHandlerRegistry HandlerRegistry { get; } = new();
     
     internal CloudEventBusBuilder(IServiceCollection services)
     {
@@ -49,6 +50,44 @@ public class CloudEventBusBuilder
     public CloudEventBusBuilder DisableCloudEvents()
     {
         CloudEventsOptions.Enabled = false;
+        return this;
+    }
+    
+    /// <summary>
+    /// Registers a message handler.
+    /// </summary>
+    public CloudEventBusBuilder AddHandler<TMessage, THandler>()
+        where TMessage : notnull
+        where THandler : class, IMessageHandler<TMessage>
+    {
+        var eventType = TypeRegistry.ResolveEventType(typeof(TMessage));
+        if (string.IsNullOrEmpty(eventType))
+        {
+            throw new InvalidOperationException(
+                $"Cannot register handler for {typeof(TMessage).Name}: " +
+                "message type must be registered first via AddMessage<T>() or have [CloudEvent] attribute.");
+        }
+        
+        HandlerRegistry.Register<TMessage, THandler>(eventType);
+        Services.AddScoped<THandler>();
+        Services.AddScoped<IMessageHandler<TMessage>>(sp => sp.GetRequiredService<THandler>());
+        
+        return this;
+    }
+    
+    /// <summary>
+    /// Registers a message with its handler in one call.
+    /// </summary>
+    public CloudEventBusBuilder AddMessageWithHandler<TMessage, THandler>(string eventType)
+        where TMessage : class
+        where THandler : class, IMessageHandler<TMessage>
+    {
+        AddMessage<TMessage>(eventType);
+        
+        HandlerRegistry.Register<TMessage, THandler>(eventType);
+        Services.AddScoped<THandler>();
+        Services.AddScoped<IMessageHandler<TMessage>>(sp => sp.GetRequiredService<THandler>());
+        
         return this;
     }
 }

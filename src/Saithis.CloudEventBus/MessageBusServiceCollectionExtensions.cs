@@ -17,10 +17,12 @@ public static class MessageBusServiceCollectionExtensions
         var builder = new CloudEventBusBuilder(services);
         configure?.Invoke(builder);
         
-        // Freeze registry for optimal performance
+        // Freeze registries for optimal performance
         builder.TypeRegistry.Freeze();
+        builder.HandlerRegistry.Freeze();
         
         services.AddSingleton(builder.TypeRegistry);
+        services.AddSingleton(builder.HandlerRegistry);
         services.AddSingleton(builder.CloudEventsOptions);
         
         // Register TimeProvider if not already registered (allows test overrides)
@@ -28,6 +30,9 @@ public static class MessageBusServiceCollectionExtensions
         
         // Register inner serializer
         services.AddSingleton<JsonMessageSerializer>();
+        
+        // Register deserializer
+        services.AddSingleton<IMessageDeserializer, JsonMessageDeserializer>();
         
         // Register CloudEvents wrapper as the main serializer
         services.AddSingleton<IMessageSerializer>(sp => new CloudEventsSerializer(

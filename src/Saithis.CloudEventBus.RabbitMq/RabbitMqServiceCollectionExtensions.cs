@@ -18,4 +18,21 @@ public static class RabbitMqServiceCollectionExtensions
         
         return services;
     }
+    
+    /// <summary>
+    /// Adds RabbitMQ message consuming support.
+    /// </summary>
+    public static IServiceCollection AddRabbitMqConsumer(
+        this IServiceCollection services,
+        Action<RabbitMqConsumerOptions> configure)
+    {
+        var options = new RabbitMqConsumerOptions();
+        configure(options);
+        
+        services.AddSingleton(options);
+        services.AddSingleton<MessageDispatcher>();
+        services.AddHostedService<RabbitMqConsumer>();
+        
+        return services;
+    }
 }

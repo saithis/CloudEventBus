@@ -6,7 +6,7 @@
 - Core library with CloudEvents serialization (✅ implemented)
 - Message type registry (✅ implemented)
 - RabbitMQ sender (✅ implemented - for understanding transport layer)
-- Plan 08 (Testing Support) - InMemoryMessageSender and test helpers make testing consumption easier
+- Plan 08 (✅ implemented - Testing Support) - InMemoryMessageSender and test helpers make testing consumption easier
 
 ## Problem
 
@@ -709,7 +709,7 @@ services.AddRabbitMqConsumer(consumer =>
 
 ---
 
-## Part 5: Health Checks (Optional)
+## Part 5: Health Checks
 
 Create `src/Saithis.CloudEventBus.RabbitMq/RabbitMqConsumerHealthCheck.cs`:
 

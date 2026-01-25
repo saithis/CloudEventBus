@@ -3,6 +3,7 @@ using AwesomeAssertions;
 using CloudEventBus.Tests.Fixtures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using RabbitMQ.Client;
 using Saithis.CloudEventBus;
 using Saithis.CloudEventBus.CloudEvents;
@@ -25,6 +26,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
     {
         // Arrange - Setup full stack with PostgreSQL outbox and RabbitMQ sender
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
         services.AddTestDbContext(containers.PostgresConnectionString);
@@ -101,6 +103,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
     {
         // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus.AddMessage<CustomerUpdatedEvent>("customer.updated"));
         services.AddTestRabbitMq(containers.RabbitMqConnectionString);
@@ -139,6 +142,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
     {
         // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
             .AddMessage<TestEvent>("test.event")
@@ -219,6 +223,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
     {
         // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
             .AddMessage<TestEvent>("test.event")
@@ -278,6 +283,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
     {
         // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
             .AddMessage<TestEvent>("test.event")
@@ -330,5 +336,324 @@ public class EndToEndTests(CombinedContainerFixture containers)
         headers.Should().ContainKey("ce-specversion");
         headers.Should().ContainKey("ce-type");
         headers.Should().ContainKey("ce-source");
+    }
+
+    [Test]
+    public async Task PublishAndConsume_DirectPublish_HandlerReceivesMessage()
+    {
+        // Arrange
+        var queueName = $"e2e-consume-{Guid.NewGuid()}";
+        var handler = new TestEventHandler();
+        
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddCloudEventBus(bus => bus
+            .AddMessage<TestEvent>("test.event")
+            .AddHandler<TestEvent, TestEventHandler>());
+        services.AddSingleton(handler);
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
+        services.AddRabbitMqConsumer(opts =>
+        {
+            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
+            opts.AutoAck = false;
+        });
+        
+        var provider = services.BuildServiceProvider();
+        var bus = provider.GetRequiredService<ICloudEventBus>();
+        
+        // Setup queue
+        var factory = new ConnectionFactory { Uri = new Uri(containers.RabbitMqConnectionString) };
+        await using var connection = await factory.CreateConnectionAsync();
+        await using var channel = await connection.CreateChannelAsync();
+        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: true);
+        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        
+        // Start consumer
+        var consumer = provider.GetRequiredService<IHostedService>();
+        await consumer.StartAsync(CancellationToken.None);
+        
+        try
+        {
+            // Act - Publish message
+            await bus.PublishDirectAsync(new TestEvent { Id = "e2e-123", Data = "end-to-end test" }, 
+                new MessageProperties
+                {
+                    Extensions = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                });
+            
+            // Wait for message to be consumed
+            await Task.Delay(1500);
+            
+            // Assert
+            handler.HandledMessages.Should().HaveCount(1);
+            handler.HandledMessages[0].Id.Should().Be("e2e-123");
+            handler.HandledMessages[0].Data.Should().Be("end-to-end test");
+        }
+        finally
+        {
+            await consumer.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Test]
+    public async Task PublishAndConsume_OutboxToConsumer_CompleteFlow()
+    {
+        // Arrange
+        var queueName = $"e2e-outbox-consume-{Guid.NewGuid()}";
+        var handler = new TestEventHandler();
+        
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddCloudEventBus(bus => bus
+            .AddMessage<TestEvent>("test.event")
+            .AddHandler<TestEvent, TestEventHandler>());
+        services.AddSingleton(handler);
+        services.AddTestDbContext(containers.PostgresConnectionString);
+        services.AddTestOutbox<TestDbContext>();
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
+        services.AddRabbitMqConsumer(opts =>
+        {
+            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
+            opts.AutoAck = false;
+        });
+        
+        var provider = services.BuildServiceProvider();
+        
+        // Setup database and queue
+        using (var scope = provider.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+            await dbContext.Database.EnsureCreatedAsync();
+        }
+        
+        var factory = new ConnectionFactory { Uri = new Uri(containers.RabbitMqConnectionString) };
+        await using var connection = await factory.CreateConnectionAsync();
+        await using var channel = await connection.CreateChannelAsync();
+        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: true);
+        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        
+        // Start consumer
+        var consumer = provider.GetRequiredService<IHostedService>();
+        await consumer.StartAsync(CancellationToken.None);
+        
+        try
+        {
+            // Act - Stage message in outbox
+            using (var scope = provider.CreateScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+                dbContext.OutboxMessages.Add(
+                    new TestEvent { Id = "outbox-e2e-123", Data = "outbox to consumer test" },
+                    new MessageProperties
+                    {
+                        Extensions = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                    });
+                await dbContext.SaveChangesAsync();
+            }
+            
+            // Process outbox to send to RabbitMQ
+            using (var scope = provider.CreateScope())
+            {
+                var processor = scope.ServiceProvider.GetRequiredService<SynchronousOutboxProcessor<TestDbContext>>();
+                var processedCount = await processor.ProcessAllAsync();
+                processedCount.Should().Be(1);
+            }
+            
+            // Wait for message to be consumed
+            await Task.Delay(1500);
+            
+            // Assert
+            handler.HandledMessages.Should().HaveCount(1);
+            handler.HandledMessages[0].Id.Should().Be("outbox-e2e-123");
+            handler.HandledMessages[0].Data.Should().Be("outbox to consumer test");
+        }
+        finally
+        {
+            await consumer.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Test]
+    public async Task PublishAndConsume_MultipleHandlers_AllHandlersCalled()
+    {
+        // Arrange
+        var queueName = $"e2e-multi-{Guid.NewGuid()}";
+        var handler1 = new TestEventHandler();
+        var handler2 = new SecondTestEventHandler();
+        
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddCloudEventBus(bus => bus
+            .AddMessage<TestEvent>("test.event")
+            .AddHandler<TestEvent, TestEventHandler>()
+            .AddHandler<TestEvent, SecondTestEventHandler>());
+        services.AddSingleton(handler1);
+        services.AddSingleton(handler2);
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
+        services.AddRabbitMqConsumer(opts =>
+        {
+            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
+            opts.AutoAck = false;
+        });
+        
+        var provider = services.BuildServiceProvider();
+        var bus = provider.GetRequiredService<ICloudEventBus>();
+        
+        // Setup queue
+        var factory = new ConnectionFactory { Uri = new Uri(containers.RabbitMqConnectionString) };
+        await using var connection = await factory.CreateConnectionAsync();
+        await using var channel = await connection.CreateChannelAsync();
+        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: true);
+        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        
+        // Start consumer
+        var consumer = provider.GetRequiredService<IHostedService>();
+        await consumer.StartAsync(CancellationToken.None);
+        
+        try
+        {
+            // Act
+            await bus.PublishDirectAsync(new TestEvent { Id = "multi-123", Data = "multi-handler test" },
+                new MessageProperties
+                {
+                    Extensions = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                });
+            
+            await Task.Delay(1500);
+            
+            // Assert - Both handlers received the message
+            handler1.HandledMessages.Should().HaveCount(1);
+            handler1.HandledMessages[0].Id.Should().Be("multi-123");
+            
+            handler2.HandledMessages.Should().HaveCount(1);
+            handler2.HandledMessages[0].Id.Should().Be("multi-123");
+        }
+        finally
+        {
+            await consumer.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Test]
+    public async Task PublishAndConsume_WithCloudEventsBinary_HandlerReceivesCorrectData()
+    {
+        // Arrange
+        var queueName = $"e2e-binary-{Guid.NewGuid()}";
+        var handler = new TestEventHandler();
+        
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddCloudEventBus(bus => bus
+            .AddMessage<TestEvent>("test.event")
+            .AddHandler<TestEvent, TestEventHandler>()
+            .ConfigureCloudEvents(opts => opts.ContentMode = CloudEventsContentMode.Binary));
+        services.AddSingleton(handler);
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
+        services.AddRabbitMqConsumer(opts =>
+        {
+            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
+            opts.AutoAck = false;
+        });
+        
+        var provider = services.BuildServiceProvider();
+        var bus = provider.GetRequiredService<ICloudEventBus>();
+        
+        // Setup queue
+        var factory = new ConnectionFactory { Uri = new Uri(containers.RabbitMqConnectionString) };
+        await using var connection = await factory.CreateConnectionAsync();
+        await using var channel = await connection.CreateChannelAsync();
+        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: true);
+        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        
+        // Start consumer
+        var consumer = provider.GetRequiredService<IHostedService>();
+        await consumer.StartAsync(CancellationToken.None);
+        
+        try
+        {
+            // Act
+            await bus.PublishDirectAsync(new TestEvent { Id = "binary-123", Data = "binary mode test" },
+                new MessageProperties
+                {
+                    Extensions = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                });
+            
+            await Task.Delay(1500);
+            
+            // Assert
+            handler.HandledMessages.Should().HaveCount(1);
+            handler.HandledMessages[0].Id.Should().Be("binary-123");
+            handler.HandledMessages[0].Data.Should().Be("binary mode test");
+        }
+        finally
+        {
+            await consumer.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Test]
+    public async Task PublishAndConsume_MultipleMessages_AllProcessed()
+    {
+        // Arrange
+        var queueName = $"e2e-multiple-{Guid.NewGuid()}";
+        var handler = new TestEventHandler();
+        
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddCloudEventBus(bus => bus
+            .AddMessage<TestEvent>("test.event")
+            .AddHandler<TestEvent, TestEventHandler>());
+        services.AddSingleton(handler);
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
+        services.AddRabbitMqConsumer(opts =>
+        {
+            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
+            opts.AutoAck = false;
+            opts.PrefetchCount = 10;
+        });
+        
+        var provider = services.BuildServiceProvider();
+        var bus = provider.GetRequiredService<ICloudEventBus>();
+        
+        // Setup queue
+        var factory = new ConnectionFactory { Uri = new Uri(containers.RabbitMqConnectionString) };
+        await using var connection = await factory.CreateConnectionAsync();
+        await using var channel = await connection.CreateChannelAsync();
+        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: true);
+        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        
+        // Start consumer
+        var consumer = provider.GetRequiredService<IHostedService>();
+        await consumer.StartAsync(CancellationToken.None);
+        
+        try
+        {
+            // Act - Publish multiple messages
+            for (int i = 1; i <= 10; i++)
+            {
+                await bus.PublishDirectAsync(
+                    new TestEvent { Id = i.ToString(), Data = $"message {i}" },
+                    new MessageProperties
+                    {
+                        Extensions = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                    });
+            }
+            
+            await Task.Delay(2500);
+            
+            // Assert
+            handler.HandledMessages.Should().HaveCount(10);
+            handler.HandledMessages.Select(m => m.Id).Should().BeEquivalentTo(
+                ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
+        }
+        finally
+        {
+            await consumer.StopAsync(CancellationToken.None);
+        }
     }
 }

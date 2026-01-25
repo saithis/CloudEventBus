@@ -1,4 +1,5 @@
 using Saithis.CloudEventBus;
+using Saithis.CloudEventBus.Core;
 
 namespace CloudEventBus.Tests.Fixtures;
 
@@ -40,4 +41,59 @@ public class TestEntity
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+// Test handler implementations for message consuming tests
+public class TestEventHandler : IMessageHandler<TestEvent>
+{
+    public List<TestEvent> HandledMessages { get; } = new();
+    
+    public Task HandleAsync(TestEvent message, MessageContext context, CancellationToken cancellationToken)
+    {
+        HandledMessages.Add(message);
+        return Task.CompletedTask;
+    }
+}
+
+public class SecondTestEventHandler : IMessageHandler<TestEvent>
+{
+    public List<TestEvent> HandledMessages { get; } = new();
+    
+    public Task HandleAsync(TestEvent message, MessageContext context, CancellationToken cancellationToken)
+    {
+        HandledMessages.Add(message);
+        return Task.CompletedTask;
+    }
+}
+
+public class OrderCreatedHandler : IMessageHandler<OrderCreatedEvent>
+{
+    public List<OrderCreatedEvent> HandledMessages { get; } = new();
+    
+    public Task HandleAsync(OrderCreatedEvent message, MessageContext context, CancellationToken cancellationToken)
+    {
+        HandledMessages.Add(message);
+        return Task.CompletedTask;
+    }
+}
+
+public class ThrowingTestEventHandler : IMessageHandler<TestEvent>
+{
+    public Task HandleAsync(TestEvent message, MessageContext context, CancellationToken cancellationToken)
+    {
+        throw new InvalidOperationException("Handler failed intentionally");
+    }
+}
+
+public class SlowTestEventHandler : IMessageHandler<TestEvent>
+{
+    private int _processingCount;
+    
+    public int ProcessingCount => _processingCount;
+    
+    public async Task HandleAsync(TestEvent message, MessageContext context, CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref _processingCount);
+        await Task.Delay(500, cancellationToken); // Simulate slow processing
+    }
 }
