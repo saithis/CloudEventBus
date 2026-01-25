@@ -12,6 +12,16 @@ namespace Saithis.CloudEventBus.Testing;
 public class InMemoryMessageSender : IMessageSender
 {
     private readonly ConcurrentBag<SentMessage> _messages = new();
+
+    /// <summary>
+    /// Gets the message type registry used by this sender.
+    /// </summary>
+    public MessageTypeRegistry? Registry { get; }
+    
+    public InMemoryMessageSender(MessageTypeRegistry? registry = null)
+    {
+        Registry = registry;
+    }
     
     /// <summary>
     /// All messages that have been sent.

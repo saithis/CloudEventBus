@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
@@ -11,4 +11,7 @@
       <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.0.0" />
     </ItemGroup>
 
+    <ItemGroup>
+        <InternalsVisibleTo Include="CloudEventBus.Tests" />
+    </ItemGroup>
 </Project>

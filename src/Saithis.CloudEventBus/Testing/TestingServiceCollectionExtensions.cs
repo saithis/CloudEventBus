@@ -10,13 +10,13 @@ public static class TestingServiceCollectionExtensions
 {
     /// <summary>
     /// Adds the in-memory message sender for testing.
-    /// The sender instance is registered as a singleton for easy access in tests.
+    /// The sender instance is registered as a scoped service for test isolation.
+    /// Note: If you need to access the sender for assertions, retrieve it from the same scope.
     /// </summary>
     public static IServiceCollection AddInMemoryMessageSender(this IServiceCollection services)
     {
-        var sender = new InMemoryMessageSender();
-        services.AddSingleton(sender);
-        services.AddSingleton<IMessageSender>(sender);
+        services.AddSingleton<InMemoryMessageSender>();
+        services.AddSingleton<IMessageSender>(sp => sp.GetRequiredService<InMemoryMessageSender>());
         return services;
     }
     

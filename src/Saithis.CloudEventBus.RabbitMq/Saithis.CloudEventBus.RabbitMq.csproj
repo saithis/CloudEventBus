@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
@@ -14,5 +14,8 @@
     <ItemGroup>
       <ProjectReference Include="..\Saithis.CloudEventBus\Saithis.CloudEventBus.csproj" />
     </ItemGroup>
-
+    
+    <ItemGroup>
+        <InternalsVisibleTo Include="CloudEventBus.Tests" />
+    </ItemGroup>
 </Project>

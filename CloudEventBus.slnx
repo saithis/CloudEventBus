@@ -3,8 +3,12 @@
     <Project Path="examples/AppHost/AppHost.csproj" />
     <Project Path="examples/PlaygroundApi\PlaygroundApi.csproj" Type="C#" />
   </Folder>
-  <Folder Name="/ideas/">
-    <File Path="ideas\Ideas.md" />
+  <Folder Name="/notes/">
+    <File Path="notes\ideas.md" />
+    <File Path="notes\todos.md" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CloudEventBus.Tests/CloudEventBus.Tests.csproj" />
   </Folder>
   <Project Path="src\Saithis.CloudEventBus.EfCoreOutbox\Saithis.CloudEventBus.EfCoreOutbox.csproj" Type="C#" />
   <Project Path="src\Saithis.CloudEventBus.RabbitMq\Saithis.CloudEventBus.RabbitMq.csproj" Type="C#" />

@@ -1,5 +1,9 @@
+using System.Reflection;
 using System.Text.Json;
 using Saithis.CloudEventBus.CloudEvents;
+using Saithis.CloudEventBus;
+using Saithis.CloudEventBus.Core;
+
 
 namespace Saithis.CloudEventBus.Testing;
 
@@ -16,7 +20,7 @@ public static class TestAssertions
         Func<TMessage, bool>? predicate = null)
     {
         var matching = sender.SentMessages
-            .Where(m => MatchesType<TMessage>(m))
+            .Where(m => MatchesType<TMessage>(m, sender.Registry))
             .ToList();
         
         if (matching.Count == 0)
@@ -50,7 +54,7 @@ public static class TestAssertions
     /// </summary>
     public static void ShouldNotHaveSent<TMessage>(this InMemoryMessageSender sender)
     {
-        var matching = sender.SentMessages.Where(m => MatchesType<TMessage>(m)).ToList();
+        var matching = sender.SentMessages.Where(m => MatchesType<TMessage>(m, sender.Registry)).ToList();
         
         if (matching.Count > 0)
         {
@@ -86,13 +90,37 @@ public static class TestAssertions
     /// </summary>
     public static IReadOnlyList<SentMessage> GetSentMessages<TMessage>(this InMemoryMessageSender sender)
     {
-        return sender.SentMessages.Where(m => MatchesType<TMessage>(m)).ToList();
+        return sender.SentMessages.Where(m => MatchesType<TMessage>(m, sender.Registry)).ToList();
     }
     
-    private static bool MatchesType<TMessage>(SentMessage message)
+    private static bool MatchesType<TMessage>(SentMessage message, MessageTypeRegistry? registry)
     {
-        // Try to match by CloudEvent type in properties
-        var expectedType = typeof(TMessage).Name;
+        var type = typeof(TMessage);
+        
+        // 1. Check registry first if available
+        if (registry != null)
+        {
+            var registryType = registry.ResolveEventType(type);
+            if (!string.IsNullOrEmpty(registryType) && 
+                message.Properties.Type?.Equals(registryType, StringComparison.OrdinalIgnoreCase) == true)
+            {
+                return true;
+            }
+        }
+        
+        // 2. Check for CloudEvent attribute
+        var cloudEventAttr = type.GetCustomAttribute<CloudEventAttribute>();
+        if (cloudEventAttr != null)
+        {
+            // Exact match on the declared CloudEvent type
+            if (message.Properties.Type?.Equals(cloudEventAttr.Type, StringComparison.OrdinalIgnoreCase) == true)
+            {
+                return true;
+            }
+        }
+        
+        // 3. Try to match by class name (convention)
+        var expectedType = type.Name;
         
         // Check if it's a CloudEvents envelope (structured mode)
         try
@@ -100,6 +128,21 @@ public static class TestAssertions
             var envelope = JsonSerializer.Deserialize<CloudEventEnvelope>(message.Content);
             if (envelope?.Type != null)
             {
+                // If the envelope type matches attribute OR class name
+                if (cloudEventAttr != null && envelope.Type.Equals(cloudEventAttr.Type, StringComparison.OrdinalIgnoreCase))
+                    return true;
+                
+                // If registry knows the type, check against that too
+                if (registry != null)
+                {
+                    var registryType = registry.ResolveEventType(type);
+                    if (!string.IsNullOrEmpty(registryType) && 
+                        envelope.Type.Equals(registryType, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+                    
                 return envelope.Type.Contains(expectedType, StringComparison.OrdinalIgnoreCase)
                     || message.Properties.Type?.Contains(expectedType, StringComparison.OrdinalIgnoreCase) == true;
             }
@@ -109,22 +152,17 @@ public static class TestAssertions
             // Not a CloudEvents envelope, continue with other checks
         }
         
-        // Check message properties
+        // 4. Check message properties for class name match (fallback convention)
         if (message.Properties.Type?.Contains(expectedType, StringComparison.OrdinalIgnoreCase) == true)
         {
             return true;
         }
-        
-        // Try to deserialize and see if it matches
-        try
-        {
-            var deserialized = message.Deserialize<TMessage>();
-            return deserialized != null;
-        }
-        catch
-        {
-            return false;
-        }
+
+        // We can't determine if it matches just by looking at content because JSON deserialization 
+        // is too permissive (it will deserialize anything into an empty object).
+        // If we don't have type information in the envelope or properties, we should assume it doesn't match
+        // rather than giving a false positive.
+        return false;
     }
 }
 

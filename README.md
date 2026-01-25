@@ -1,6 +1,7 @@
 # CloudEventBus
 
-A .NET library for implementing cloud event patterns with support for outbox pattern and multiple message brokers.
+A modern .NET library for reliable event/message publishing using the outbox pattern with CloudEvents support.
+
 
 ## Getting Started
 
@@ -36,3 +37,16 @@ See [examples/AppHost/README.md](examples/AppHost/README.md) for more details.
 - `src/Saithis.CloudEventBus.RabbitMq` - RabbitMQ message sender
 - `examples/PlaygroundApi` - Example API application
 - `examples/AppHost` - .NET Aspire orchestration
+- `tests/CloudEventBus.Tests` - Integration and unit tests
+
+## Testing
+
+The project includes comprehensive tests using TUnit and TestContainers:
+
+```bash
+cd tests/CloudEventBus.Tests
+dotnet run
+```
+
+- Integration tests with real PostgreSQL and RabbitMQ containers
+- See [tests/TESTING.md](tests/TESTING.md) for detailed testing guide

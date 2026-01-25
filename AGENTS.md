@@ -1,3 +1,22 @@
+# AI Agent Instructions
+
+## Testing
+
+This project uses **TUnit** as the test framework and **AwesomeAssertions** for assertions.
+
+**IMPORTANT**: AwesomeAssertions is a fork of FluentAssertions with an open-source friendly license. The API is **identical** to FluentAssertions, so use FluentAssertions documentation/examples when writing assertions.
+
+```csharp
+// Use AwesomeAssertions (FluentAssertions API)
+result.Should().Be(expected);
+collection.Should().HaveCount(5);
+act.Should().Throw<InvalidOperationException>();
+```
+
+See `tests/CloudEventBus.Tests/AGENTS.md` for detailed testing instructions.
+
+---
+
 # Copilot instructions
 
 This repository is set up to use Aspire. Aspire is an orchestrator for the entire application and will take care of configuring dependencies, building, and running the application. The resources that make up the application are defined in `apphost.cs` including application code and external dependencies.
