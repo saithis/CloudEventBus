@@ -85,11 +85,11 @@ app.MapGet("/", () => "Hello World!");
 app.MapPost("/send", async ([FromBody] NoteDto dto, [FromServices] ICloudEventBus bus) =>
 {
     // PublishDirectAsync - sends immediately, no outbox
-    await bus.PublishDirectAsync(dto, new MessageProperties
+    await bus.PublishDirectAsync(dto, new MessageEnvelope
     {
         Type = "com.example.notes.test",
         Source = "/playground-api",
-        Extensions =
+        TransportMetadata =
         {
             [RabbitMqMessageSender.RoutingKeyExtensionKey] = "notes.test"
         }
@@ -112,9 +112,9 @@ app.MapPost("/notes", async ([FromBody] NoteDto dto, [FromServices] NotesDbConte
     {
         Id = note.Id,
         Text = $"New Note: {dto.Text}",
-    }, new MessageProperties
+    }, new MessageEnvelope
     {
-        Extensions =
+        TransportMetadata =
         {
             [RabbitMqMessageSender.RoutingKeyExtensionKey] = "notes.added"
         }

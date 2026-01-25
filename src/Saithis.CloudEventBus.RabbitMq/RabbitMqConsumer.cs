@@ -8,26 +8,15 @@ using Saithis.CloudEventBus.Core;
 
 namespace Saithis.CloudEventBus.RabbitMq;
 
-public class RabbitMqConsumer : BackgroundService
+public class RabbitMqConsumer(
+    RabbitMqConnectionManager connectionManager,
+    RabbitMqConsumerOptions options,
+    MessageDispatcher dispatcher,
+    ILogger<RabbitMqConsumer> logger)
+    : BackgroundService
 {
-    private readonly RabbitMqConnectionManager _connectionManager;
-    private readonly RabbitMqConsumerOptions _options;
-    private readonly MessageDispatcher _dispatcher;
-    private readonly ILogger<RabbitMqConsumer> _logger;
     private readonly List<IChannel> _channels = new();
-    
-    public RabbitMqConsumer(
-        RabbitMqConnectionManager connectionManager,
-        RabbitMqConsumerOptions options,
-        MessageDispatcher dispatcher,
-        ILogger<RabbitMqConsumer> logger)
-    {
-        _connectionManager = connectionManager;
-        _options = options;
-        _dispatcher = dispatcher;
-        _logger = logger;
-    }
-    
+
     /// <summary>
     /// Gets whether the consumer is healthy (all channels are open).
     /// </summary>
@@ -35,12 +24,12 @@ public class RabbitMqConsumer : BackgroundService
     
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Starting RabbitMQ consumer");
+        logger.LogInformation("Starting RabbitMQ consumer");
         
-        foreach (var queueConfig in _options.Queues)
+        foreach (var queueConfig in options.Queues)
         {
-            var channel = await _connectionManager.CreateChannelAsync(false, stoppingToken);
-            await channel.BasicQosAsync(0, _options.PrefetchCount, false);
+            var channel = await connectionManager.CreateChannelAsync(false, stoppingToken);
+            await channel.BasicQosAsync(0, options.PrefetchCount, false);
             
             var consumer = new AsyncEventingBasicConsumer(channel);
             consumer.ReceivedAsync += async (_, ea) =>
@@ -50,12 +39,12 @@ public class RabbitMqConsumer : BackgroundService
             
             await channel.BasicConsumeAsync(
                 queue: queueConfig.QueueName,
-                autoAck: _options.AutoAck,
+                autoAck: options.AutoAck,
                 consumer: consumer,
                 cancellationToken: stoppingToken);
             
             _channels.Add(channel);
-            _logger.LogInformation("Started consuming from queue '{Queue}'", queueConfig.QueueName);
+            logger.LogInformation("Started consuming from queue '{Queue}'", queueConfig.QueueName);
         }
         
         // Keep running until cancelled
@@ -72,9 +61,9 @@ public class RabbitMqConsumer : BackgroundService
         try
         {
             var context = BuildMessageContext(ea);
-            var result = await _dispatcher.DispatchAsync(ea.Body.ToArray(), context, cancellationToken);
+            var result = await dispatcher.DispatchAsync(ea.Body.ToArray(), context, cancellationToken);
             
-            if (!_options.AutoAck)
+            if (!options.AutoAck)
             {
                 switch (result)
                 {
@@ -83,12 +72,12 @@ public class RabbitMqConsumer : BackgroundService
                         break;
                     case DispatchResult.NoHandlers:
                         // No handler found - reject without requeue (goes to DLQ if configured)
-                        _logger.LogWarning("No handler for message '{MessageId}', rejecting", messageId);
+                        logger.LogWarning("No handler for message '{MessageId}', rejecting", messageId);
                         await channel.BasicNackAsync(ea.DeliveryTag, false, false, cancellationToken);
                         break;
                     case DispatchResult.DeserializationFailed:
                         // Can't deserialize - reject without requeue (poison message)
-                        _logger.LogError("Failed to deserialize message '{MessageId}', rejecting", messageId);
+                        logger.LogError("Failed to deserialize message '{MessageId}', rejecting", messageId);
                         await channel.BasicNackAsync(ea.DeliveryTag, false, false, cancellationToken);
                         break;
                 }
@@ -96,9 +85,9 @@ public class RabbitMqConsumer : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing message '{MessageId}'", messageId);
+            logger.LogError(ex, "Error processing message '{MessageId}'", messageId);
             
-            if (!_options.AutoAck)
+            if (!options.AutoAck)
             {
                 // Handler threw - requeue for retry
                 // TODO: Consider retry count header to avoid infinite loops
@@ -107,7 +96,7 @@ public class RabbitMqConsumer : BackgroundService
         }
     }
     
-    private MessageContext BuildMessageContext(BasicDeliverEventArgs ea)
+    private MessageEnvelope BuildMessageContext(BasicDeliverEventArgs ea)
     {
         var headers = new Dictionary<string, string>();
         if (ea.BasicProperties.Headers != null)
@@ -137,7 +126,7 @@ public class RabbitMqConsumer : BackgroundService
             time = parsed;
         }
         
-        return new MessageContext
+        return new MessageEnvelope
         {
             Id = id,
             Type = type,
@@ -150,7 +139,7 @@ public class RabbitMqConsumer : BackgroundService
     
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Stopping RabbitMQ consumer");
+        logger.LogInformation("Stopping RabbitMQ consumer");
         
         foreach (var channel in _channels)
         {

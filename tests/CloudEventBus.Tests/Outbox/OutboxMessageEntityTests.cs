@@ -14,7 +14,7 @@ public class OutboxMessageEntityTests
         // Arrange
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2025, 1, 24, 12, 0, 0, TimeSpan.Zero));
         var content = "test content"u8.ToArray();
-        var props = new MessageProperties { Type = "test.event" };
+        var props = new MessageEnvelope { Type = "test.event" };
         
         // Act
         var entity = OutboxMessageEntity.Create(content, props, fakeTime);
@@ -34,7 +34,7 @@ public class OutboxMessageEntityTests
     {
         // Arrange
         var fakeTime = new FakeTimeProvider();
-        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageProperties(), fakeTime);
+        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageEnvelope(), fakeTime);
         
         fakeTime.Advance(TimeSpan.FromSeconds(5));
         
@@ -50,7 +50,7 @@ public class OutboxMessageEntityTests
     {
         // Arrange
         var fakeTime = new FakeTimeProvider();
-        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageProperties(), fakeTime);
+        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageEnvelope(), fakeTime);
         entity.MarkAsProcessing(fakeTime);
         
         fakeTime.Advance(TimeSpan.FromSeconds(1));
@@ -68,7 +68,7 @@ public class OutboxMessageEntityTests
     {
         // Arrange
         var fakeTime = new FakeTimeProvider();
-        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageProperties(), fakeTime);
+        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageEnvelope(), fakeTime);
         
         // Act
         entity.PublishFailed("Error 1", fakeTime, maxRetries: 5, TimeSpan.FromMinutes(5));
@@ -86,7 +86,7 @@ public class OutboxMessageEntityTests
     {
         // Arrange
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2025, 1, 24, 12, 0, 0, TimeSpan.Zero));
-        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageProperties(), fakeTime);
+        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageEnvelope(), fakeTime);
         
         // Act - First failure (2^1 = 2 seconds)
         entity.PublishFailed("Error 1", fakeTime, maxRetries: 5, TimeSpan.FromMinutes(5));
@@ -117,7 +117,7 @@ public class OutboxMessageEntityTests
     {
         // Arrange
         var fakeTime = new FakeTimeProvider();
-        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageProperties(), fakeTime);
+        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageEnvelope(), fakeTime);
         var maxDelay = TimeSpan.FromSeconds(10);
         
         // Simulate many failures to hit the cap
@@ -141,7 +141,7 @@ public class OutboxMessageEntityTests
     {
         // Arrange
         var fakeTime = new FakeTimeProvider();
-        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageProperties(), fakeTime);
+        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageEnvelope(), fakeTime);
         var maxRetries = 3;
         
         // Act - Fail maxRetries times
@@ -162,7 +162,7 @@ public class OutboxMessageEntityTests
     {
         // Arrange
         var fakeTime = new FakeTimeProvider();
-        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageProperties(), fakeTime);
+        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageEnvelope(), fakeTime);
         
         // Act
         entity.MarkAsPoisoned("Manual poisoning", fakeTime);
@@ -179,7 +179,7 @@ public class OutboxMessageEntityTests
     {
         // Arrange
         var fakeTime = new FakeTimeProvider();
-        var props = new MessageProperties 
+        var props = new MessageEnvelope 
         { 
             Type = "test.event",
             Source = "/test",
@@ -201,7 +201,7 @@ public class OutboxMessageEntityTests
     {
         // Arrange
         var fakeTime = new FakeTimeProvider();
-        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageProperties(), fakeTime);
+        var entity = OutboxMessageEntity.Create("test"u8.ToArray(), new MessageEnvelope(), fakeTime);
         var longError = new string('x', 3000); // Longer than 2000 char limit
         
         // Act

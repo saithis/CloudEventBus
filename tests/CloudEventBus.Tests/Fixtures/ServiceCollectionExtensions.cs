@@ -85,7 +85,7 @@ public static class ServiceCollectionExtensions
             // If outbox is needed, configure the interceptor
             if (withOutboxInterceptor)
             {
-                var messageSerializer = sp.GetRequiredService<Saithis.CloudEventBus.Core.IMessageSerializer>();
+                var messageSerializer = sp.GetRequiredService<IMessageSerializer>();
                 var timeProvider = sp.GetRequiredService<TimeProvider>();
                 var interceptor = new TestOutboxInterceptor<TestDbContext>(messageSerializer, timeProvider);
                 options.AddInterceptors(interceptor);
@@ -94,71 +94,24 @@ public static class ServiceCollectionExtensions
         
         return services;
     }
-    
+
     /// <summary>
     /// Test-specific outbox interceptor that doesn't trigger background processing.
     /// Converts staged messages to entities but doesn't call TriggerAsync.
     /// </summary>
-    private class TestOutboxInterceptor<TDbContext> : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    private class TestOutboxInterceptor<TDbContext>(
+        IMessageSerializer messageSerializer,
+        TimeProvider timeProvider)
+        : OutboxTriggerInterceptor<TDbContext>(null!, messageSerializer, timeProvider)
         where TDbContext : DbContext, IOutboxDbContext
     {
-        private readonly Saithis.CloudEventBus.Core.IMessageSerializer _messageSerializer;
-        private readonly TimeProvider _timeProvider;
-
-        public TestOutboxInterceptor(
-            Saithis.CloudEventBus.Core.IMessageSerializer messageSerializer,
-            TimeProvider timeProvider)
+        public override ValueTask<int> SavedChangesAsync(
+            SaveChangesCompletedEventData eventData,
+            int result,
+            CancellationToken cancellationToken = default
+        )
         {
-            _messageSerializer = messageSerializer;
-            _timeProvider = timeProvider;
-        }
-
-        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
-            DbContextEventData eventData,
-            InterceptionResult<int> result,
-            CancellationToken cancellationToken = default)
-        {
-            var context = eventData.Context;
-            if (context == null)
-                return ValueTask.FromResult(result);
-
-            if (context is not IOutboxDbContext outboxDbContext)
-                return ValueTask.FromResult(result);
-
-            // Access the internal Queue via reflection
-            var queueField = typeof(OutboxStagingCollection)
-                .GetField("Queue", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-            var queue = queueField.GetValue(outboxDbContext.OutboxMessages);
-            
-            var queueType = queue!.GetType();
-            var tryPeekMethod = queueType.GetMethod("TryPeek");
-            var tryDequeueMethod = queueType.GetMethod("TryDequeue");
-            
-            // Process all items in queue
-            while (outboxDbContext.OutboxMessages.Count > 0)
-            {
-                var peekParams = new object?[] { null };
-                var hasPeeked = (bool)tryPeekMethod!.Invoke(queue, peekParams)!;
-                
-                if (!hasPeeked)
-                    break;
-                
-                var item = peekParams[0]!;
-                var itemType = item.GetType();
-                var messageProperty = itemType.GetProperty("Message", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-                var propertiesProperty = itemType.GetProperty("Properties", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-                
-                var message = messageProperty.GetValue(item)!;
-                var properties = (MessageProperties)propertiesProperty.GetValue(item)!;
-                
-                var serializedMessage = _messageSerializer.Serialize(message, properties);
-                var outboxMessage = OutboxMessageEntity.Create(serializedMessage, properties, _timeProvider);
-                context.Set<OutboxMessageEntity>().Add(outboxMessage);
-                
-                // Dequeue after successful serialization
-                tryDequeueMethod!.Invoke(queue, new object?[] { null });
-            }
-
+            // Override base to prevent outbox processor triggering
             return ValueTask.FromResult(result);
         }
     }

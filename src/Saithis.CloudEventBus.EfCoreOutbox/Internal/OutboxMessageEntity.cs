@@ -42,12 +42,12 @@ internal class OutboxMessageEntity
     /// </summary>
     public DateTimeOffset? ProcessingStartedAt { get; private set; }
     
-    public MessageProperties GetProperties() => 
-        JsonSerializer.Deserialize<MessageProperties>(SerializedProperties)
+    public MessageEnvelope GetProperties() => 
+        JsonSerializer.Deserialize<MessageEnvelope>(SerializedProperties)
         ?? throw new OutboxMessageSerializationException("Could not deserialize the message properties.", SerializedProperties);
 
     private OutboxMessageEntity(){}
-    public static OutboxMessageEntity Create(byte[] message, MessageProperties props, TimeProvider timeProvider)
+    public static OutboxMessageEntity Create(byte[] message, MessageEnvelope props, TimeProvider timeProvider)
     {
         return new OutboxMessageEntity
         {

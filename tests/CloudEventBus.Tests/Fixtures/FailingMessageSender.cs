@@ -17,7 +17,7 @@ public class FailingMessageSender : IMessageSender
 
     public int CallCount => _callCount;
 
-    public Task SendAsync(byte[] content, MessageProperties props, CancellationToken cancellationToken)
+    public Task SendAsync(byte[] content, MessageEnvelope props, CancellationToken cancellationToken)
     {
         _callCount++;
         

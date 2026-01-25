@@ -37,9 +37,9 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
         
         // Act
-        await bus.PublishDirectAsync(new TestEvent { Data = "test message" }, new MessageProperties
+        await bus.PublishDirectAsync(new TestEvent { Data = "test message" }, new MessageEnvelope
         {
-            Extensions = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+            TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
         });
         
         // Wait a bit for message delivery
@@ -69,7 +69,7 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         var sender = provider.GetRequiredService<IMessageSender>();
         
         var message = new TestEvent { Data = "confirmed message" };
-        var props = new MessageProperties { Type = "test.event" };
+        var props = new MessageEnvelope { Type = "test.event" };
         
         // Serialize the message
         var serializer = provider.GetRequiredService<IMessageSerializer>();
@@ -104,9 +104,9 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: customRoutingKey);
         
         // Act
-        await bus.PublishDirectAsync(new TestEvent { Data = "routed message" }, new MessageProperties
+        await bus.PublishDirectAsync(new TestEvent { Data = "routed message" }, new MessageEnvelope
         {
-            Extensions = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = customRoutingKey }
+            TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = customRoutingKey }
         });
         
         await Task.Delay(500);
@@ -137,9 +137,9 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
         
         // Act
-        await bus.PublishDirectAsync(new TestEvent { Data = "test" }, new MessageProperties
+        await bus.PublishDirectAsync(new TestEvent { Data = "test" }, new MessageEnvelope
         {
-            Extensions = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+            TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
         });
         
         await Task.Delay(500);
@@ -176,9 +176,9 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
         
         // Act
-        await bus.PublishDirectAsync(new TestEvent { Data = "binary test" }, new MessageProperties
+        await bus.PublishDirectAsync(new TestEvent { Data = "binary test" }, new MessageEnvelope
         {
-            Extensions = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+            TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
         });
         
         await Task.Delay(500);
@@ -222,9 +222,9 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         // Act - Send multiple messages
         for (int i = 1; i <= 5; i++)
         {
-            await bus.PublishDirectAsync(new TestEvent { Data = $"message {i}" }, new MessageProperties
+            await bus.PublishDirectAsync(new TestEvent { Data = $"message {i}" }, new MessageEnvelope
             {
-                Extensions = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
             });
         }
         

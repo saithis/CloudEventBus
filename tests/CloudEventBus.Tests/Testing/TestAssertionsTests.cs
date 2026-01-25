@@ -23,7 +23,7 @@ public class TestAssertionsTests
         var testEvent = new TestEvent { Id = "123", Data = "test" };
         var serialized = JsonSerializer.SerializeToUtf8Bytes(testEvent);
         
-        await sender.SendAsync(serialized, new Saithis.CloudEventBus.Core.MessageProperties 
+        await sender.SendAsync(serialized, new Saithis.CloudEventBus.Core.MessageEnvelope 
         { 
             Type = "test.event.basic" 
         }, CancellationToken.None);
@@ -33,7 +33,7 @@ public class TestAssertionsTests
         
         // Assert
         result.Should().NotBeNull();
-        result.Properties.Type.Should().Be("test.event.basic");
+        result.Envelope.Type.Should().Be("test.event.basic");
     }
 
     [Test]
@@ -47,11 +47,11 @@ public class TestAssertionsTests
         var event3 = new OrderCreatedEvent { OrderId = "ORDER-3", Amount = 150 };
         
         await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event1), 
-            new Saithis.CloudEventBus.Core.MessageProperties { Type = "order.created" }, CancellationToken.None);
+            new Saithis.CloudEventBus.Core.MessageEnvelope { Type = "order.created" }, CancellationToken.None);
         await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event2), 
-            new Saithis.CloudEventBus.Core.MessageProperties { Type = "order.created" }, CancellationToken.None);
+            new Saithis.CloudEventBus.Core.MessageEnvelope { Type = "order.created" }, CancellationToken.None);
         await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event3), 
-            new Saithis.CloudEventBus.Core.MessageProperties { Type = "order.created" }, CancellationToken.None);
+            new Saithis.CloudEventBus.Core.MessageEnvelope { Type = "order.created" }, CancellationToken.None);
         
         // Act
         var result = sender.ShouldHaveSent<OrderCreatedEvent>(e => e.Amount > 100);
@@ -71,7 +71,7 @@ public class TestAssertionsTests
         var testEvent = new TestEvent { Data = "test" };
         
         await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent), 
-            new Saithis.CloudEventBus.Core.MessageProperties { Type = "test.event" }, CancellationToken.None);
+            new Saithis.CloudEventBus.Core.MessageEnvelope { Type = "test.event" }, CancellationToken.None);
         
         // Act & Assert
         Action act = () => sender.ShouldHaveSent<OrderCreatedEvent>();
@@ -87,7 +87,7 @@ public class TestAssertionsTests
         var event1 = new OrderCreatedEvent { OrderId = "ORDER-1", Amount = 50 };
         
         await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event1), 
-            new Saithis.CloudEventBus.Core.MessageProperties { Type = "order.created" }, CancellationToken.None);
+            new Saithis.CloudEventBus.Core.MessageEnvelope { Type = "order.created" }, CancellationToken.None);
         
         // Act & Assert
         Action act = () => sender.ShouldHaveSent<OrderCreatedEvent>(e => e.Amount > 100);
@@ -103,7 +103,7 @@ public class TestAssertionsTests
         var testEvent = new TestEvent { Data = "test" };
         
         await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent), 
-            new Saithis.CloudEventBus.Core.MessageProperties { Type = "test.event.basic" }, CancellationToken.None);
+            new Saithis.CloudEventBus.Core.MessageEnvelope { Type = "test.event.basic" }, CancellationToken.None);
         
         // Act & Assert
         Action act = () => sender.ShouldNotHaveSent<TestEvent>();
@@ -126,9 +126,9 @@ public class TestAssertionsTests
     {
         // Arrange
         var sender = new InMemoryMessageSender();
-        await sender.SendAsync("msg1"u8.ToArray(), new Saithis.CloudEventBus.Core.MessageProperties(), CancellationToken.None);
-        await sender.SendAsync("msg2"u8.ToArray(), new Saithis.CloudEventBus.Core.MessageProperties(), CancellationToken.None);
-        await sender.SendAsync("msg3"u8.ToArray(), new Saithis.CloudEventBus.Core.MessageProperties(), CancellationToken.None);
+        await sender.SendAsync("msg1"u8.ToArray(), new Saithis.CloudEventBus.Core.MessageEnvelope(), CancellationToken.None);
+        await sender.SendAsync("msg2"u8.ToArray(), new Saithis.CloudEventBus.Core.MessageEnvelope(), CancellationToken.None);
+        await sender.SendAsync("msg3"u8.ToArray(), new Saithis.CloudEventBus.Core.MessageEnvelope(), CancellationToken.None);
         
         // Act & Assert - Should not throw
         sender.ShouldHaveSentCount(3);
@@ -139,7 +139,7 @@ public class TestAssertionsTests
     {
         // Arrange
         var sender = new InMemoryMessageSender();
-        await sender.SendAsync("msg"u8.ToArray(), new Saithis.CloudEventBus.Core.MessageProperties(), CancellationToken.None);
+        await sender.SendAsync("msg"u8.ToArray(), new Saithis.CloudEventBus.Core.MessageEnvelope(), CancellationToken.None);
         
         // Act & Assert
         Action act = () => sender.ShouldHaveSentCount(3);
@@ -152,7 +152,7 @@ public class TestAssertionsTests
     {
         // Arrange
         var sender = new InMemoryMessageSender();
-        await sender.SendAsync("msg"u8.ToArray(), new Saithis.CloudEventBus.Core.MessageProperties(), CancellationToken.None);
+        await sender.SendAsync("msg"u8.ToArray(), new Saithis.CloudEventBus.Core.MessageEnvelope(), CancellationToken.None);
         
         // Act & Assert
         Action act = () => sender.ShouldNotHaveSentAny();
@@ -179,11 +179,11 @@ public class TestAssertionsTests
         var orderEvent = new OrderCreatedEvent { OrderId = "ORDER-1" };
         
         await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent), 
-            new Saithis.CloudEventBus.Core.MessageProperties { Type = "test.event.basic" }, CancellationToken.None);
+            new Saithis.CloudEventBus.Core.MessageEnvelope { Type = "test.event.basic" }, CancellationToken.None);
         await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(orderEvent), 
-            new Saithis.CloudEventBus.Core.MessageProperties { Type = "order.created" }, CancellationToken.None);
+            new Saithis.CloudEventBus.Core.MessageEnvelope { Type = "order.created" }, CancellationToken.None);
         await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent), 
-            new Saithis.CloudEventBus.Core.MessageProperties { Type = "test.event.basic" }, CancellationToken.None);
+            new Saithis.CloudEventBus.Core.MessageEnvelope { Type = "test.event.basic" }, CancellationToken.None);
         
         // Act
         var testMessages = sender.GetSentMessages<TestEvent>();
@@ -199,9 +199,9 @@ public class TestAssertionsTests
         var sender = new InMemoryMessageSender();
         
         await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new TestEvent { Data = "first" }), 
-            new Saithis.CloudEventBus.Core.MessageProperties { Type = "test.event.basic" }, CancellationToken.None);
+            new Saithis.CloudEventBus.Core.MessageEnvelope { Type = "test.event.basic" }, CancellationToken.None);
         await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new TestEvent { Data = "second" }), 
-            new Saithis.CloudEventBus.Core.MessageProperties { Type = "test.event.basic" }, CancellationToken.None);
+            new Saithis.CloudEventBus.Core.MessageEnvelope { Type = "test.event.basic" }, CancellationToken.None);
         
         // Act
         var result = sender.ShouldHaveSent<TestEvent>();
@@ -220,7 +220,7 @@ public class TestAssertionsTests
         
         // Send with CloudEvents type that contains the class name
         await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent), 
-            new Saithis.CloudEventBus.Core.MessageProperties { Type = "com.example.TestEvent" }, CancellationToken.None);
+            new Saithis.CloudEventBus.Core.MessageEnvelope { Type = "com.example.TestEvent" }, CancellationToken.None);
         
         // Act & Assert - Should match even with different type format
         var result = sender.ShouldHaveSent<TestEvent>();

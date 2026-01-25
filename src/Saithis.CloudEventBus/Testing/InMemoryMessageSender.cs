@@ -28,7 +28,7 @@ public class InMemoryMessageSender : IMessageSender
     /// </summary>
     public IReadOnlyCollection<SentMessage> SentMessages => _messages.ToArray();
     
-    public Task SendAsync(byte[] content, MessageProperties props, CancellationToken cancellationToken)
+    public Task SendAsync(byte[] content, MessageEnvelope props, CancellationToken cancellationToken)
     {
         _messages.Add(new SentMessage(content, props, DateTimeOffset.UtcNow));
         return Task.CompletedTask;
@@ -46,7 +46,7 @@ public class InMemoryMessageSender : IMessageSender
 /// <summary>
 /// Represents a message that was sent via InMemoryMessageSender.
 /// </summary>
-public record SentMessage(byte[] Content, MessageProperties Properties, DateTimeOffset SentAt)
+public record SentMessage(byte[] Content, MessageEnvelope Envelope, DateTimeOffset SentAt)
 {
     /// <summary>
     /// Deserializes the message content to the specified type.

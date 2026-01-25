@@ -42,7 +42,7 @@ public class OutboxStagingCollectionTests
         // Arrange
         var collection = new OutboxStagingCollection();
         var message = new TestEvent { Data = "test" };
-        var props = new MessageProperties { Type = "custom.type" };
+        var props = new MessageEnvelope { Type = "custom.type" };
         
         // Act
         collection.Add(message, props);

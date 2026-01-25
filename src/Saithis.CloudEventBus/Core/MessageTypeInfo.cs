@@ -3,24 +3,16 @@ namespace Saithis.CloudEventBus.Core;
 /// <summary>
 /// Information about a registered message type.
 /// </summary>
-public class MessageTypeInfo
+public class MessageTypeInfo(
+    Type clrType,
+    string eventType,
+    string? source = null,
+    IReadOnlyDictionary<string, string>? extensions = null)
 {
-    public Type ClrType { get; }
-    public string EventType { get; }
-    public string? Source { get; }
-    public IReadOnlyDictionary<string, string> Extensions { get; }
-    
-    public MessageTypeInfo(
-        Type clrType, 
-        string eventType, 
-        string? source = null,
-        IReadOnlyDictionary<string, string>? extensions = null)
-    {
-        ClrType = clrType;
-        EventType = eventType;
-        Source = source;
-        Extensions = extensions ?? new Dictionary<string, string>();
-    }
+    public Type ClrType { get; } = clrType;
+    public string EventType { get; } = eventType;
+    public string? Source { get; } = source;
+    public IReadOnlyDictionary<string, string> Extensions { get; } = extensions ?? new Dictionary<string, string>();
 }
 
 /// <summary>

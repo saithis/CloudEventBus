@@ -7,38 +7,23 @@ namespace Saithis.CloudEventBus.Core;
 /// Dispatches incoming messages to all registered handlers.
 /// Supports multiple handlers per message type.
 /// </summary>
-public class MessageDispatcher
+public class MessageDispatcher(
+    MessageHandlerRegistry handlerRegistry,
+    MessageTypeRegistry typeRegistry,
+    IMessageSerializer deserializer,
+    IServiceScopeFactory scopeFactory,
+    ILogger<MessageDispatcher> logger)
 {
-    private readonly MessageHandlerRegistry _handlerRegistry;
-    private readonly MessageTypeRegistry _typeRegistry;
-    private readonly IMessageSerializer _deserializer;
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<MessageDispatcher> _logger;
-    
-    public MessageDispatcher(
-        MessageHandlerRegistry handlerRegistry,
-        MessageTypeRegistry typeRegistry,
-        IMessageSerializer deserializer,
-        IServiceScopeFactory scopeFactory,
-        ILogger<MessageDispatcher> logger)
-    {
-        _handlerRegistry = handlerRegistry;
-        _typeRegistry = typeRegistry;
-        _deserializer = deserializer;
-        _scopeFactory = scopeFactory;
-        _logger = logger;
-    }
-    
     /// <summary>
     /// Dispatches a message to all registered handlers.
     /// All handlers run in the same DI scope.
     /// </summary>
-    public async Task<DispatchResult> DispatchAsync(byte[] body, MessageContext context, CancellationToken cancellationToken)
+    public async Task<DispatchResult> DispatchAsync(byte[] body, MessageEnvelope envelope, CancellationToken cancellationToken)
     {
-        var registrations = _handlerRegistry.GetHandlers(context.Type);
+        var registrations = handlerRegistry.GetHandlers(envelope.Type);
         if (registrations.Count == 0)
         {
-            _logger.LogWarning("No handlers registered for event type '{EventType}'", context.Type);
+            logger.LogWarning("No handlers registered for event type '{EventType}'", envelope.Type);
             return DispatchResult.NoHandlers;
         }
         
@@ -47,20 +32,20 @@ public class MessageDispatcher
         object? message;
         try
         {
-            message = _deserializer.Deserialize(body, messageType, context);
+            message = deserializer.Deserialize(body, messageType, envelope);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to deserialize message of type '{EventType}'", context.Type);
+            logger.LogError(ex, "Failed to deserialize message of type '{EventType}'", envelope.Type);
             return DispatchResult.DeserializationFailed;
         }
         if (message == null)
         {
-            _logger.LogError("Failed to deserialize message of type '{EventType}'", context.Type);
+            logger.LogError("Failed to deserialize message of type '{EventType}'", envelope.Type);
             return DispatchResult.DeserializationFailed;
         }
         
-        using var scope = _scopeFactory.CreateScope();
+        using var scope = scopeFactory.CreateScope();
         var errors = new List<Exception>();
         
         foreach (var registration in registrations)
@@ -82,16 +67,16 @@ public class MessageDispatcher
                 }
 
                 var handleMethod = registration.HandlerInterfaceType.GetMethod("HandleAsync")!;
-                var task = (Task)handleMethod.Invoke(handler, [message, context, cancellationToken])!;
+                var task = (Task)handleMethod.Invoke(handler, [message, envelope, cancellationToken])!;
                 await task;
                 
-                _logger.LogDebug("Handler '{Handler}' processed message '{Id}' of type '{Type}'", 
-                    registration.HandlerType.Name, context.Id, context.Type);
+                logger.LogDebug("Handler '{Handler}' processed message '{Id}' of type '{Type}'", 
+                    registration.HandlerType.Name, envelope.Id, envelope.Type);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Handler '{Handler}' failed for message '{Id}' of type '{Type}'", 
-                    registration.HandlerType.Name, context.Id, context.Type);
+                logger.LogError(ex, "Handler '{Handler}' failed for message '{Id}' of type '{Type}'", 
+                    registration.HandlerType.Name, envelope.Id, envelope.Type);
                 errors.Add(ex);
             }
         }
@@ -100,7 +85,7 @@ public class MessageDispatcher
         {
             // If some handlers succeeded and some failed, throw aggregate
             throw new AggregateException(
-                $"One or more handlers failed for message '{context.Id}'", errors);
+                $"One or more handlers failed for message '{envelope.Id}'", errors);
         }
         
         return DispatchResult.Success;

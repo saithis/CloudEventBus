@@ -15,7 +15,7 @@ public class JsonMessageSerializerTests
         // Arrange
         var serializer = new JsonMessageSerializer();
 
-        var messageProperties = new MessageProperties();
+        var messageProperties = new MessageEnvelope();
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = serializer.Serialize(testEvent, messageProperties);
         
@@ -35,7 +35,7 @@ public class JsonMessageSerializerTests
         // Arrange
         var serializer = new JsonMessageSerializer();
 
-        var messageProperties = new MessageProperties();
+        var messageProperties = new MessageEnvelope();
         var body = serializer.Serialize(null!, messageProperties);
         
         // Act
@@ -54,7 +54,7 @@ public class JsonMessageSerializerTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageContext
+        var context = new MessageEnvelope
         {
             Id = "event-123",
             Type = "test.event",
@@ -78,7 +78,7 @@ public class JsonMessageSerializerTests
         var deserializer = new JsonMessageSerializer();
         
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize((TestEvent?)null));
-        var context = new MessageContext
+        var context = new MessageEnvelope
         {
             Id = "event-123",
             Type = "test.event",
@@ -101,7 +101,7 @@ public class JsonMessageSerializerTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageContext
+        var context = new MessageEnvelope
         {
             Id = "event-123",
             Type = "test.event",
@@ -133,7 +133,7 @@ public class JsonMessageSerializerTests
             CreatedAt = new DateTimeOffset(2024, 1, 15, 10, 30, 0, TimeSpan.Zero)
         };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(orderEvent));
-        var context = new MessageContext
+        var context = new MessageEnvelope
         {
             Id = "event-123",
             Type = "order.created",

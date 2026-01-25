@@ -27,7 +27,7 @@ public static class TestAssertions
         {
             throw new AssertionException(
                 $"Expected to find a sent message of type {typeof(TMessage).Name}, but none were found. " +
-                $"Messages sent: [{string.Join(", ", sender.SentMessages.Select(m => m.Properties.Type))}]");
+                $"Messages sent: [{string.Join(", ", sender.SentMessages.Select(m => m.Envelope.Type))}]");
         }
         
         if (predicate != null)
@@ -102,7 +102,7 @@ public static class TestAssertions
         {
             var registryType = registry.ResolveEventType(type);
             if (!string.IsNullOrEmpty(registryType) && 
-                message.Properties.Type?.Equals(registryType, StringComparison.OrdinalIgnoreCase) == true)
+                message.Envelope.Type?.Equals(registryType, StringComparison.OrdinalIgnoreCase) == true)
             {
                 return true;
             }
@@ -113,7 +113,7 @@ public static class TestAssertions
         if (cloudEventAttr != null)
         {
             // Exact match on the declared CloudEvent type
-            if (message.Properties.Type?.Equals(cloudEventAttr.Type, StringComparison.OrdinalIgnoreCase) == true)
+            if (message.Envelope.Type?.Equals(cloudEventAttr.Type, StringComparison.OrdinalIgnoreCase) == true)
             {
                 return true;
             }
@@ -144,7 +144,7 @@ public static class TestAssertions
                 }
                     
                 return envelope.Type.Contains(expectedType, StringComparison.OrdinalIgnoreCase)
-                    || message.Properties.Type?.Contains(expectedType, StringComparison.OrdinalIgnoreCase) == true;
+                    || message.Envelope.Type?.Contains(expectedType, StringComparison.OrdinalIgnoreCase) == true;
             }
         }
         catch
@@ -153,7 +153,7 @@ public static class TestAssertions
         }
         
         // 4. Check message properties for class name match (fallback convention)
-        if (message.Properties.Type?.Contains(expectedType, StringComparison.OrdinalIgnoreCase) == true)
+        if (message.Envelope.Type?.Contains(expectedType, StringComparison.OrdinalIgnoreCase) == true)
         {
             return true;
         }

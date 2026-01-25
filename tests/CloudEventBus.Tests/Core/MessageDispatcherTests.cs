@@ -28,7 +28,7 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageContext
+        var context = new MessageEnvelope
         {
             Id = "event-123",
             Type = "test.event",
@@ -65,7 +65,7 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageContext
+        var context = new MessageEnvelope
         {
             Id = "event-123",
             Type = "test.event",
@@ -91,7 +91,7 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageContext
+        var context = new MessageEnvelope
         {
             Id = "event-123",
             Type = "unknown.event",
@@ -120,7 +120,7 @@ public class MessageDispatcherTests
         handlerRegistry.Freeze();
         
         var invalidBody = Encoding.UTF8.GetBytes("not valid json");
-        var context = new MessageContext
+        var context = new MessageEnvelope
         {
             Id = "event-123",
             Type = "test.event",
@@ -151,7 +151,7 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageContext
+        var context = new MessageEnvelope
         {
             Id = "event-123",
             Type = "test.event",
@@ -186,7 +186,7 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageContext
+        var context = new MessageEnvelope
         {
             Id = "event-123",
             Type = "test.event",
@@ -220,7 +220,7 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageContext
+        var context = new MessageEnvelope
         {
             Id = "event-123",
             Type = "test.event",
@@ -252,7 +252,7 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageContext
+        var context = new MessageEnvelope
         {
             Id = "event-123",
             Type = "test.event",
@@ -315,7 +315,7 @@ public class ScopedServiceTestHandler : IMessageHandler<TestEvent>
 {
     public List<Guid> ServiceIds { get; } = new();
     
-    public Task HandleAsync(TestEvent message, MessageContext context, CancellationToken cancellationToken)
+    public Task HandleAsync(TestEvent message, MessageEnvelope context, CancellationToken cancellationToken)
     {
         ServiceIds.Add(Guid.NewGuid()); // Simulate capturing service ID
         return Task.CompletedTask;
@@ -325,9 +325,9 @@ public class ScopedServiceTestHandler : IMessageHandler<TestEvent>
 // Handler that captures context
 public class ContextCapturingHandler : IMessageHandler<TestEvent>
 {
-    public MessageContext? CapturedContext { get; private set; }
+    public MessageEnvelope? CapturedContext { get; private set; }
     
-    public Task HandleAsync(TestEvent message, MessageContext context, CancellationToken cancellationToken)
+    public Task HandleAsync(TestEvent message, MessageEnvelope context, CancellationToken cancellationToken)
     {
         CapturedContext = context;
         return Task.CompletedTask;

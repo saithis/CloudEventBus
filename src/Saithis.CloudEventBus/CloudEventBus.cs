@@ -9,11 +9,11 @@ public class CloudEventBus(
 {
     public async Task PublishDirectAsync<TMessage>(
         TMessage message, 
-        MessageProperties? props = null, 
+        MessageEnvelope? props = null, 
         CancellationToken cancellationToken = default)
         where TMessage : notnull
     {
-        props ??= new MessageProperties();
+        props ??= new MessageEnvelope();
         
         // Auto-populate type from registry if not explicitly set
         if (string.IsNullOrEmpty(props.Type))
@@ -26,7 +26,7 @@ public class CloudEventBus(
                 // Copy registered extensions
                 foreach (var ext in typeInfo.Extensions)
                 {
-                    props.Extensions.TryAdd(ext.Key, ext.Value);
+                    props.TransportMetadata.TryAdd(ext.Key, ext.Value);
                 }
             }
             else

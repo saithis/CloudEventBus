@@ -6,7 +6,7 @@ namespace Saithis.CloudEventBus.Testing;
 
 public class ConsoleMessageSender() : IMessageSender
 {
-    public Task SendAsync(byte[] content, MessageProperties props, CancellationToken cancellationToken)
+    public Task SendAsync(byte[] content, MessageEnvelope props, CancellationToken cancellationToken)
     {
         Console.WriteLine("= Sending Message ===========");
         Console.WriteLine(Encoding.UTF8.GetString(content));

@@ -18,7 +18,7 @@ public interface ICloudEventBus
     /// </remarks>
     Task PublishDirectAsync<TMessage>(
         TMessage message, 
-        MessageProperties? props = null, 
+        MessageEnvelope? props = null, 
         CancellationToken cancellationToken = default)
         where TMessage : notnull;
 }

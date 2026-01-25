@@ -3,24 +3,16 @@ using Saithis.CloudEventBus.Core;
 
 namespace Saithis.CloudEventBus.RabbitMq;
 
-public class RabbitMqMessageSender : IMessageSender, IAsyncDisposable
+public class RabbitMqMessageSender(RabbitMqConnectionManager connectionManager, RabbitMqOptions options)
+    : IMessageSender, IAsyncDisposable
 {
-    private readonly RabbitMqConnectionManager _connectionManager;
-    private readonly RabbitMqOptions _options;
-    
     // Extension keys for routing
     public const string ExchangeExtensionKey = "rabbitmq.exchange";
     public const string RoutingKeyExtensionKey = "rabbitmq.routingKey";
-    
-    public RabbitMqMessageSender(RabbitMqConnectionManager connectionManager, RabbitMqOptions options)
+
+    public async Task SendAsync(byte[] content, MessageEnvelope props, CancellationToken cancellationToken)
     {
-        _connectionManager = connectionManager;
-        _options = options;
-    }
-    
-    public async Task SendAsync(byte[] content, MessageProperties props, CancellationToken cancellationToken)
-    {
-        await using var channel = await _connectionManager.CreateChannelAsync(_options.UsePublisherConfirms, cancellationToken);
+        await using var channel = await connectionManager.CreateChannelAsync(options.UsePublisherConfirms, cancellationToken);
         
         var exchange = GetExchange(props);
         var routingKey = GetRoutingKey(props);
@@ -37,22 +29,22 @@ public class RabbitMqMessageSender : IMessageSender, IAsyncDisposable
             cancellationToken: cancellationToken);
     }
     
-    private string GetExchange(MessageProperties props)
+    private string GetExchange(MessageEnvelope props)
     {
-        if (props.Extensions.TryGetValue(ExchangeExtensionKey, out var exchange))
+        if (props.TransportMetadata.TryGetValue(ExchangeExtensionKey, out var exchange))
             return exchange;
-        return _options.DefaultExchange;
+        return options.DefaultExchange;
     }
     
-    private string GetRoutingKey(MessageProperties props)
+    private string GetRoutingKey(MessageEnvelope props)
     {
-        if (props.Extensions.TryGetValue(RoutingKeyExtensionKey, out var routingKey))
+        if (props.TransportMetadata.TryGetValue(RoutingKeyExtensionKey, out var routingKey))
             return routingKey;
         // Fall back to message type if available
         return props.Type ?? "";
     }
     
-    private static BasicProperties CreateBasicProperties(MessageProperties props)
+    private static BasicProperties CreateBasicProperties(MessageEnvelope props)
     {
         var basicProps = new BasicProperties
         {
@@ -81,6 +73,6 @@ public class RabbitMqMessageSender : IMessageSender, IAsyncDisposable
     
     public async ValueTask DisposeAsync()
     {
-        await _connectionManager.DisposeAsync();
+        await connectionManager.DisposeAsync();
     }
 }

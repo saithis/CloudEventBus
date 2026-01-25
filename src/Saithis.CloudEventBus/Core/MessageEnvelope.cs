@@ -1,6 +1,6 @@
 namespace Saithis.CloudEventBus.Core;
 
-public class MessageProperties
+public class MessageEnvelope
 {
     /// <summary>
     /// Unique identifier for this event. Auto-generated if not set.
@@ -32,6 +32,11 @@ public class MessageProperties
     public string? ContentType { get; set; }
     
     /// <summary>
+    /// The content of the message.
+    /// </summary>
+    public byte[]? RawBody { get; set; }
+    
+    /// <summary>
     /// Event timestamp. Auto-set to current time if not specified.
     /// </summary>
     public DateTimeOffset? Time { get; set; }
@@ -45,7 +50,7 @@ public class MessageProperties
     /// Transport-specific metadata (e.g., RabbitMQ exchange/routing key).
     /// Not included in CloudEvents envelope.
     /// </summary>
-    public Dictionary<string, string> Extensions { get; set; } = new();
+    public Dictionary<string, string> TransportMetadata { get; set; } = new();
     
     /// <summary>
     /// CloudEvents extension attributes (included in envelope).
