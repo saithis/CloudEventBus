@@ -160,9 +160,9 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         // Arrange
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
-        services.AddTestRabbitMq(rabbitMq.ConnectionString, ce => 
-            ce.ContentMode = CloudEventsAmqpContentMode.Binary);
+        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event")
+            .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Binary));
+        services.AddTestRabbitMq(rabbitMq.ConnectionString);
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<ICloudEventBus>();

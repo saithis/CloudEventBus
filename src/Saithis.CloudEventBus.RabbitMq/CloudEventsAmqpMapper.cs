@@ -13,15 +13,16 @@ namespace Saithis.CloudEventBus.RabbitMq;
 /// See: https://github.com/cloudevents/spec/blob/main/cloudevents/bindings/amqp-protocol-binding.md
 /// </summary>
 public class CloudEventsAmqpMapper(
-    CloudEventsAmqpOptions options,
+    CloudEventsOptions options,
+    TimeProvider timeProvider,
     MessageTypeRegistry typeRegistry) : IRabbitMqEnvelopeMapper
 {
     public byte[] MapOutgoing(byte[] serializedData, MessageProperties props, BasicProperties outgoing)
     {
         // Ensure required CloudEvents fields are set
-        props.Id ??= Guid.NewGuid().ToString();
-        props.Time ??= options.TimeProvider.GetUtcNow();
-        props.Source ??= ResolveSource(props) ?? options.DefaultSource;
+        props.Id ??= Guid.NewGuid().ToString(); // TODO: set this in the enricher
+        props.Time ??= timeProvider.GetUtcNow(); // TODO: set this in the enricher
+        props.Source ??= ResolveSource(props) ?? options.DefaultSource; // TODO: set this in the enricher
         
         if (string.IsNullOrEmpty(props.Type))
         {
@@ -30,10 +31,11 @@ public class CloudEventsAmqpMapper(
                 "Either register the message type or set MessageProperties.Type explicitly.");
         }
         
+        // TODO: make this settable per message and maybe add it to the properties
         return options.ContentMode switch
         {
-            CloudEventsAmqpContentMode.Binary => MapBinaryMode(serializedData, props, outgoing),
-            CloudEventsAmqpContentMode.Structured => MapStructuredMode(serializedData, props, outgoing),
+            CloudEventsContentMode.Binary => MapBinaryMode(serializedData, props, outgoing),
+            CloudEventsContentMode.Structured => MapStructuredMode(serializedData, props, outgoing),
             _ => throw new ArgumentOutOfRangeException()
         };
     }

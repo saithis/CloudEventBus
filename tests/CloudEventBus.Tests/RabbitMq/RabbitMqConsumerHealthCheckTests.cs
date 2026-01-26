@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Abstractions;
+using Saithis.CloudEventBus.CloudEvents;
 using Saithis.CloudEventBus.Core;
 using Saithis.CloudEventBus.RabbitMq;
 using TUnit.Core;
@@ -109,8 +110,8 @@ public class TestRabbitMqConsumer : RabbitMqConsumer
     
     private static IRabbitMqEnvelopeMapper CreateMockMapper()
     {
-        var options = new CloudEventsAmqpOptions();
+        var options = new CloudEventsOptions();
         var typeRegistry = new MessageTypeRegistry();
-        return new CloudEventsAmqpMapper(options, typeRegistry);
+        return new CloudEventsAmqpMapper(options, TimeProvider.System, typeRegistry);
     }
 }

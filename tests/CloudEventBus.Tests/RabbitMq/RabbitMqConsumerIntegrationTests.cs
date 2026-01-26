@@ -65,7 +65,6 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .DisableCloudEvents()
             .AddMessage<TestEvent>("test.event")
             .AddHandler<TestEvent, TestEventHandler>()
             .AddHandler<TestEvent, SecondTestEventHandler>());
@@ -110,7 +109,6 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .DisableCloudEvents()
             .AddMessage<TestEvent>("test.event")
             .AddHandler<TestEvent, TestEventHandler>());
         services.AddSingleton(handler);
@@ -257,7 +255,6 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .DisableCloudEvents()
             .AddMessage<TestEvent>("test.event")
             .AddHandler<TestEvent, ThrowingTestEventHandler>());
         services.AddSingleton(handler);
@@ -307,10 +304,10 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
             .AddMessage<TestEvent>("test.event")
-            .AddHandler<TestEvent, TestEventHandler>());
+            .AddHandler<TestEvent, TestEventHandler>()
+            .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Binary));
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(rabbitMq.ConnectionString, ce => 
-            ce.ContentMode = CloudEventsAmqpContentMode.Binary);
+        services.AddTestRabbitMq(rabbitMq.ConnectionString);
         services.AddRabbitMqConsumer(opts =>
         {
             opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
@@ -387,7 +384,6 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .DisableCloudEvents()
             .AddMessage<TestEvent>("test.event")
             .AddHandler<TestEvent, SlowTestEventHandler>());
         services.AddSingleton(handler);
@@ -530,7 +526,6 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .DisableCloudEvents()
             .AddMessage<TestEvent>("test.event")
             .AddHandler<TestEvent, TestEventHandler>());
         services.AddSingleton(handler);

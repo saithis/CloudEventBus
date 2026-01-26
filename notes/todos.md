@@ -1,10 +1,5 @@
 # TODOs
 
-* Make an envelope class + EnvelopeSerializer
-  * This must be implemented by the transport specific lib
-  * CloudEvents (de)serializer moves there
-  * envelope is used for sender and dispatcher/handler
-
 ## Logic
 
 ### Consumer failure handling
@@ -15,13 +10,7 @@
 
 ## CloudEvents
 
-- Make sure cloud events are serialized according to spec.
-- Prefer cloud events headers over message properties.
-- Support cloud events extensions.
-- Support cloud events extensions in deserialization.
 - Allow single messages to opt-in/out of cloud events.
-- Detect cloud events wrapper automatically in deserializer.
-- Propper tests for cloud events serializer
 
 ## DX
 

@@ -45,15 +45,6 @@ public class CloudEventBusBuilder
     }
     
     /// <summary>
-    /// Disables CloudEvents envelope wrapping.
-    /// </summary>
-    public CloudEventBusBuilder DisableCloudEvents()
-    {
-        CloudEventsOptions.Enabled = false;
-        return this;
-    }
-    
-    /// <summary>
     /// Registers a message handler.
     /// </summary>
     public CloudEventBusBuilder AddHandler<TMessage, THandler>()

@@ -225,11 +225,11 @@ public class EndToEndTests(CombinedContainerFixture containers)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
+        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event")
+            .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Structured));
         services.AddTestDbContext(containers.PostgresConnectionString);
         services.AddTestOutbox<TestDbContext>();
-        services.AddTestRabbitMq(containers.RabbitMqConnectionString, ce => 
-            ce.ContentMode = CloudEventsAmqpContentMode.Structured);
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
         
         var provider = services.BuildServiceProvider();
         
@@ -284,11 +284,11 @@ public class EndToEndTests(CombinedContainerFixture containers)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
+        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event")
+            .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Binary));
         services.AddTestDbContext(containers.PostgresConnectionString);
         services.AddTestOutbox<TestDbContext>();
-        services.AddTestRabbitMq(containers.RabbitMqConnectionString, ce => 
-            ce.ContentMode = CloudEventsAmqpContentMode.Binary);
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
         
         var provider = services.BuildServiceProvider();
         
@@ -547,10 +547,10 @@ public class EndToEndTests(CombinedContainerFixture containers)
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
             .AddMessage<TestEvent>("test.event")
-            .AddHandler<TestEvent, TestEventHandler>());
+            .AddHandler<TestEvent, TestEventHandler>()
+            .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Binary));
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(containers.RabbitMqConnectionString, ce => 
-            ce.ContentMode = CloudEventsAmqpContentMode.Binary);
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
         services.AddRabbitMqConsumer(opts =>
         {
             opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });

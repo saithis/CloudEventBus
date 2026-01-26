@@ -28,7 +28,6 @@ public static class CloudEventsAmqpConstants
     public const string SourceHeader = "cloudEvents_source";
     public const string TypeHeader = "cloudEvents_type";
     public const string TimeHeader = "cloudEvents_time";
-    public const string DataContentTypeHeader = "cloudEvents_datacontenttype";
     public const string SubjectHeader = "cloudEvents_subject";
     
     /// <summary>

@@ -16,15 +16,15 @@ public class CloudEventsAmqpMapperTests
     public void MapOutgoing_BinaryMode_SetsCloudEventsHeaders()
     {
         // Arrange
-        var options = new CloudEventsAmqpOptions 
+        var options = new CloudEventsOptions 
         { 
-            ContentMode = CloudEventsAmqpContentMode.Binary 
+            ContentMode = CloudEventsContentMode.Binary 
         };
         var registry = new MessageTypeRegistry();
         registry.Register<TestEvent>("test.event");
         registry.Freeze();
         
-        var mapper = new CloudEventsAmqpMapper(options, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
         var serializedData = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new TestEvent { Data = "test" }));
         var props = new MessageProperties 
         { 
@@ -56,15 +56,15 @@ public class CloudEventsAmqpMapperTests
     public void MapOutgoing_StructuredMode_CreatesCloudEventsEnvelope()
     {
         // Arrange
-        var options = new CloudEventsAmqpOptions 
+        var options = new CloudEventsOptions 
         { 
-            ContentMode = CloudEventsAmqpContentMode.Structured 
+            ContentMode = CloudEventsContentMode.Structured 
         };
         var registry = new MessageTypeRegistry();
         registry.Register<TestEvent>("test.event");
         registry.Freeze();
         
-        var mapper = new CloudEventsAmqpMapper(options, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
         var testEvent = new TestEvent { Data = "test" };
         var serializedData = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
         var props = new MessageProperties 
@@ -94,12 +94,12 @@ public class CloudEventsAmqpMapperTests
     public void MapOutgoing_WithExtensions_IncludesInHeaders()
     {
         // Arrange
-        var options = new CloudEventsAmqpOptions 
+        var options = new CloudEventsOptions 
         { 
-            ContentMode = CloudEventsAmqpContentMode.Binary 
+            ContentMode = CloudEventsContentMode.Binary 
         };
         var registry = new MessageTypeRegistry();
-        var mapper = new CloudEventsAmqpMapper(options, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
         
         var serializedData = Encoding.UTF8.GetBytes("{}");
         var props = new MessageProperties 
@@ -128,9 +128,9 @@ public class CloudEventsAmqpMapperTests
     public void MapIncoming_BinaryMode_ExtractsCloudEventsAttributes()
     {
         // Arrange
-        var options = new CloudEventsAmqpOptions();
+        var options = new CloudEventsOptions();
         var registry = new MessageTypeRegistry();
-        var mapper = new CloudEventsAmqpMapper(options, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
         
         var testEvent = new TestEvent { Data = "test" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
@@ -176,9 +176,9 @@ public class CloudEventsAmqpMapperTests
     public void MapIncoming_StructuredMode_ExtractsDataFromEnvelope()
     {
         // Arrange
-        var options = new CloudEventsAmqpOptions();
+        var options = new CloudEventsOptions();
         var registry = new MessageTypeRegistry();
-        var mapper = new CloudEventsAmqpMapper(options, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
         
         var testEvent = new TestEvent { Data = "test" };
         var envelope = new CloudEventEnvelope
@@ -227,9 +227,9 @@ public class CloudEventsAmqpMapperTests
     public void MapIncoming_WithAlternativeHeaderPrefix_ReadsCorrectly()
     {
         // Arrange (Wolverine compatibility: support both cloudEvents_ and cloudEvents: prefixes)
-        var options = new CloudEventsAmqpOptions();
+        var options = new CloudEventsOptions();
         var registry = new MessageTypeRegistry();
-        var mapper = new CloudEventsAmqpMapper(options, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
         
         var body = Encoding.UTF8.GetBytes("{}");
         var basicProps = new BasicProperties { ContentType = "application/json" };
@@ -263,9 +263,9 @@ public class CloudEventsAmqpMapperTests
     public void MapOutgoing_WithoutType_ThrowsInvalidOperation()
     {
         // Arrange
-        var options = new CloudEventsAmqpOptions();
+        var options = new CloudEventsOptions();
         var registry = new MessageTypeRegistry();
-        var mapper = new CloudEventsAmqpMapper(options, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
         
         var serializedData = Encoding.UTF8.GetBytes("{}");
         var props = new MessageProperties { Source = "/test" }; // No type
@@ -281,9 +281,9 @@ public class CloudEventsAmqpMapperTests
     public void MapIncoming_PrefersStandardRabbitMqProperties_OverCloudEventsHeaders()
     {
         // Arrange (Wolverine compatibility)
-        var options = new CloudEventsAmqpOptions();
+        var options = new CloudEventsOptions();
         var registry = new MessageTypeRegistry();
-        var mapper = new CloudEventsAmqpMapper(options, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
         
         var body = Encoding.UTF8.GetBytes("{}");
         var basicProps = new BasicProperties
