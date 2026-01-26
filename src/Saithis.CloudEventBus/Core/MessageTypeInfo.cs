@@ -45,6 +45,7 @@ public class MessageTypeBuilder
     /// </summary>
     public MessageTypeBuilder WithExtension(string key, string value)
     {
+        // TODO: this gets mapped into TransportMetadata, which doesn't make sense. Make 3 methods: WithTransportMetadata, WithCloudEventsProperty, WithHeader and map them all correctly 
         _extensions[key] = value;
         return this;
     }

@@ -3,8 +3,8 @@ using CloudEventBus.Tests.Fixtures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
-using Saithis.CloudEventBus.EfCoreOutbox.Internal;
-using Saithis.CloudEventBus.EfCoreOutbox.Testing;
+using Saithis.CloudEventBus.EfCore.Internal;
+using Saithis.CloudEventBus.EfCore.Testing;
 using Saithis.CloudEventBus.Testing;
 using TUnit.Core;
 

@@ -10,7 +10,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/CloudEventBus.Tests/CloudEventBus.Tests.csproj" />
   </Folder>
-  <Project Path="src\Saithis.CloudEventBus.EfCoreOutbox\Saithis.CloudEventBus.EfCoreOutbox.csproj" />
+  <Project Path="src\Saithis.CloudEventBus.EfCore\Saithis.CloudEventBus.EfCore.csproj" />
   <Project Path="src\Saithis.CloudEventBus.RabbitMq\Saithis.CloudEventBus.RabbitMq.csproj" />
   <Project Path="src\Saithis.CloudEventBus\Saithis.CloudEventBus.csproj" />
 </Solution>

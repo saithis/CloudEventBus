@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Saithis.CloudEventBus.Core;
 
-namespace Saithis.CloudEventBus.EfCoreOutbox.Internal;
+namespace Saithis.CloudEventBus.EfCore.Internal;
 
 internal class OutboxProcessor<TDbContext>(
     IServiceScopeFactory serviceScopeFactory, 

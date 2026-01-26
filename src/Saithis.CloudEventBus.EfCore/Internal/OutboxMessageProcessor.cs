@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Saithis.CloudEventBus.Core;
 
-namespace Saithis.CloudEventBus.EfCoreOutbox.Internal;
+namespace Saithis.CloudEventBus.EfCore.Internal;
 
 /// <summary>
 /// Core outbox message processing logic shared between production and testing.

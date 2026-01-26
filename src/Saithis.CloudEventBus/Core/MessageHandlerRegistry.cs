@@ -6,7 +6,7 @@ namespace Saithis.CloudEventBus.Core;
 /// Registry of message handlers mapped by event type.
 /// Supports multiple handlers per message type.
 /// </summary>
-public class MessageHandlerRegistry
+public class MessageHandlerRegistry // TODO: does it make sense to combine this with MessageTypeRegistry?
 {
     private readonly Dictionary<string, List<HandlerRegistration>> _handlers = new();
     private FrozenDictionary<string, IReadOnlyList<HandlerRegistration>>? _frozen;

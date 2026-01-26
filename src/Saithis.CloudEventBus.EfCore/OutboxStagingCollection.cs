@@ -1,6 +1,6 @@
 using Saithis.CloudEventBus.Core;
 
-namespace Saithis.CloudEventBus.EfCoreOutbox;
+namespace Saithis.CloudEventBus.EfCore;
 
 /// <summary>
 /// Collection for staging messages to be sent via the outbox pattern.

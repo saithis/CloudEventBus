@@ -4,9 +4,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Saithis.CloudEventBus.Core;
-using Saithis.CloudEventBus.EfCoreOutbox.Internal;
+using Saithis.CloudEventBus.EfCore.Internal;
 
-namespace Saithis.CloudEventBus.EfCoreOutbox;
+namespace Saithis.CloudEventBus.EfCore;
 
 /// <summary>
 /// Contains the extension methods to enable/configure the outbox

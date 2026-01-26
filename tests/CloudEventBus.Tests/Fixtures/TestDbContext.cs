@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Saithis.CloudEventBus.EfCoreOutbox;
+using Saithis.CloudEventBus.EfCore;
 
 namespace CloudEventBus.Tests.Fixtures;
 

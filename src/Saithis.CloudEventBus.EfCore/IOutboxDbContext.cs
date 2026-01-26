@@ -1,4 +1,4 @@
-namespace Saithis.CloudEventBus.EfCoreOutbox;
+namespace Saithis.CloudEventBus.EfCore;
 
 /// <summary>
 /// Interface that DbContext classes must implement to support the outbox pattern.

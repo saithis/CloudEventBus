@@ -1,7 +1,7 @@
 using AwesomeAssertions;
 using CloudEventBus.Tests.Fixtures;
 using Saithis.CloudEventBus.Core;
-using Saithis.CloudEventBus.EfCoreOutbox;
+using Saithis.CloudEventBus.EfCore;
 using TUnit.Core;
 
 namespace CloudEventBus.Tests.Outbox;

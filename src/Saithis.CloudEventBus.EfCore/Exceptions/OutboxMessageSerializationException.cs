@@ -1,4 +1,4 @@
-﻿namespace Saithis.CloudEventBus.EfCoreOutbox;
+﻿namespace Saithis.CloudEventBus.EfCore;
 
 public class OutboxMessageSerializationException(string message, string serializedProperties)
     : OutboxException(message)

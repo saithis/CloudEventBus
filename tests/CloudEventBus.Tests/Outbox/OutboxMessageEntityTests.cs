@@ -1,7 +1,7 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.Time.Testing;
 using Saithis.CloudEventBus.Core;
-using Saithis.CloudEventBus.EfCoreOutbox.Internal;
+using Saithis.CloudEventBus.EfCore.Internal;
 using TUnit.Core;
 
 namespace CloudEventBus.Tests.Outbox;

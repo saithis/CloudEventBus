@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Saithis.CloudEventBus.EfCoreOutbox.Testing;
+namespace Saithis.CloudEventBus.EfCore.Testing;
 
 /// <summary>
 /// Extension methods for testing with the outbox pattern.

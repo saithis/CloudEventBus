@@ -22,7 +22,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\src\Saithis.CloudEventBus.EfCoreOutbox\Saithis.CloudEventBus.EfCoreOutbox.csproj" />
+      <ProjectReference Include="..\..\src\Saithis.CloudEventBus.EfCore\Saithis.CloudEventBus.EfCore.csproj" />
       <ProjectReference Include="..\..\src\Saithis.CloudEventBus.RabbitMq\Saithis.CloudEventBus.RabbitMq.csproj" />
       <ProjectReference Include="..\..\src\Saithis.CloudEventBus\Saithis.CloudEventBus.csproj" />
     </ItemGroup>

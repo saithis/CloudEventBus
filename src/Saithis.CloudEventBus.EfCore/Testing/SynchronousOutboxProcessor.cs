@@ -4,9 +4,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Saithis.CloudEventBus.Core;
-using Saithis.CloudEventBus.EfCoreOutbox.Internal;
+using Saithis.CloudEventBus.EfCore.Internal;
 
-namespace Saithis.CloudEventBus.EfCoreOutbox.Testing;
+namespace Saithis.CloudEventBus.EfCore.Testing;
 
 /// <summary>
 /// A synchronous outbox processor for testing that uses the EXACT SAME processing logic

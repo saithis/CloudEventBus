@@ -1,6 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using PlaygroundApi.Database.Entities;
-using Saithis.CloudEventBus.EfCoreOutbox;
+using Saithis.CloudEventBus.EfCore;
 
 namespace PlaygroundApi.Database;
 

@@ -8,7 +8,7 @@ using RabbitMQ.Client;
 using Saithis.CloudEventBus;
 using Saithis.CloudEventBus.CloudEvents;
 using Saithis.CloudEventBus.Core;
-using Saithis.CloudEventBus.EfCoreOutbox.Testing;
+using Saithis.CloudEventBus.EfCore.Testing;
 using Saithis.CloudEventBus.RabbitMq;
 using TUnit.Core;
 

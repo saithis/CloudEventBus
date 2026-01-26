@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Saithis.CloudEventBus.EfCoreOutbox;
+namespace Saithis.CloudEventBus.EfCore;
 
 /// <summary>
 /// Builder for configuring the outbox pattern.

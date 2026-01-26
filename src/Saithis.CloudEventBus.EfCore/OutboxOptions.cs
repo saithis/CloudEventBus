@@ -1,4 +1,4 @@
-namespace Saithis.CloudEventBus.EfCoreOutbox;
+namespace Saithis.CloudEventBus.EfCore;
 
 /// <summary>
 /// Configuration options for the outbox pattern.

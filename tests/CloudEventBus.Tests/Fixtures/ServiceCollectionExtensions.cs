@@ -6,9 +6,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Saithis.CloudEventBus;
 using Saithis.CloudEventBus.Core;
-using Saithis.CloudEventBus.EfCoreOutbox;
-using Saithis.CloudEventBus.EfCoreOutbox.Internal;
-using Saithis.CloudEventBus.EfCoreOutbox.Testing;
+using Saithis.CloudEventBus.EfCore;
+using Saithis.CloudEventBus.EfCore.Internal;
+using Saithis.CloudEventBus.EfCore.Testing;
 using Saithis.CloudEventBus.RabbitMq;
 using Saithis.CloudEventBus.Testing;
 

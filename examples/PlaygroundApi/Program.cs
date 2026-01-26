@@ -7,7 +7,7 @@ using PlaygroundApi.Database.Entities;
 using PlaygroundApi.Events;
 using Saithis.CloudEventBus;
 using Saithis.CloudEventBus.Core;
-using Saithis.CloudEventBus.EfCoreOutbox;
+using Saithis.CloudEventBus.EfCore;
 using Saithis.CloudEventBus.RabbitMq;
 
 var builder = WebApplication.CreateBuilder(args);
