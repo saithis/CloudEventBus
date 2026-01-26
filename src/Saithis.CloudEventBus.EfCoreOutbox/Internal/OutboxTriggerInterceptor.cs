@@ -7,6 +7,7 @@ namespace Saithis.CloudEventBus.EfCoreOutbox.Internal;
 internal class OutboxTriggerInterceptor<TDbContext>(
     OutboxProcessor<TDbContext> outboxProcessor, 
     IMessageSerializer messageSerializer,
+    IMessagePropertiesEnricher enricher,
     TimeProvider timeProvider) 
     : SaveChangesInterceptor where TDbContext : DbContext, IOutboxDbContext
 {
@@ -29,8 +30,9 @@ internal class OutboxTriggerInterceptor<TDbContext>(
         // successfully processed items are already removed, failed items remain
         while (outboxDbContext.OutboxMessages.Queue.TryPeek(out var item))
         {
-            var serializedMessage = messageSerializer.Serialize(item.Message, item.Properties);
-            var outboxMessage = OutboxMessageEntity.Create(serializedMessage, item.Properties, timeProvider);
+            var enrichedProperties = enricher.Enrich(item.Message.GetType(), item.Properties);
+            var serializedMessage = messageSerializer.Serialize(item.Message, enrichedProperties);
+            var outboxMessage = OutboxMessageEntity.Create(serializedMessage, enrichedProperties, timeProvider);
             context.Set<OutboxMessageEntity>().Add(outboxMessage);
             
             // Only dequeue after successful serialization

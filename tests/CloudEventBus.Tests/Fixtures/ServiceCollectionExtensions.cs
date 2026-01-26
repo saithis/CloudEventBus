@@ -86,8 +86,9 @@ public static class ServiceCollectionExtensions
             if (withOutboxInterceptor)
             {
                 var messageSerializer = sp.GetRequiredService<IMessageSerializer>();
+                var enricher = sp.GetRequiredService<IMessagePropertiesEnricher>();
                 var timeProvider = sp.GetRequiredService<TimeProvider>();
-                var interceptor = new TestOutboxInterceptor<TestDbContext>(messageSerializer, timeProvider);
+                var interceptor = new TestOutboxInterceptor<TestDbContext>(messageSerializer, enricher, timeProvider);
                 options.AddInterceptors(interceptor);
             }
         });
@@ -101,8 +102,9 @@ public static class ServiceCollectionExtensions
     /// </summary>
     private class TestOutboxInterceptor<TDbContext>(
         IMessageSerializer messageSerializer,
+        IMessagePropertiesEnricher enricher,
         TimeProvider timeProvider)
-        : OutboxTriggerInterceptor<TDbContext>(null!, messageSerializer, timeProvider)
+        : OutboxTriggerInterceptor<TDbContext>(null!, messageSerializer, enricher, timeProvider)
         where TDbContext : DbContext, IOutboxDbContext
     {
         public override ValueTask<int> SavedChangesAsync(

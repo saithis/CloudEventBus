@@ -28,6 +28,9 @@ public static class MessageBusServiceCollectionExtensions
         // Register TimeProvider if not already registered (allows test overrides)
         services.TryAddSingleton(TimeProvider.System);
         
+        // Register message properties enricher
+        services.AddSingleton<IMessagePropertiesEnricher, MessagePropertiesEnricher>();
+        
         // Register inner serializer
         services.AddKeyedSingleton<IMessageSerializer, JsonMessageSerializer>("inner");
         
