@@ -57,14 +57,17 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddTestRabbitMq(
         this IServiceCollection services,
-        string connectionString)
+        string connectionString,
+        Action<CloudEventsAmqpOptions>? configureCloudEvents = null)
     {
-        services.AddRabbitMqMessageSender(options =>
-        {
-            options.ConnectionString = connectionString;
-            options.DefaultExchange = "test.exchange";
-            options.UsePublisherConfirms = true;
-        });
+        services.AddRabbitMqMessageSender(
+            options =>
+            {
+                options.ConnectionString = connectionString;
+                options.DefaultExchange = "test.exchange";
+                options.UsePublisherConfirms = true;
+            },
+            configureCloudEvents);
         return services;
     }
 

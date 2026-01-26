@@ -15,7 +15,8 @@ public class CloudEventBus(
     {
         props = enricher.Enrich<TMessage>(props);
         
-        var serializedMessage = serializer.Serialize(message, props);
+        var serializedMessage = serializer.Serialize(message);
+        props.ContentType = serializer.ContentType;
         await sender.SendAsync(serializedMessage, props, cancellationToken);
     }
 }

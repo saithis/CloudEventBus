@@ -73,7 +73,8 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         
         // Serialize the message
         var serializer = provider.GetRequiredService<IMessageSerializer>();
-        var serialized = serializer.Serialize(message, props);
+        var serialized = serializer.Serialize(message);
+        props.ContentType = serializer.ContentType;
         
         // Act - Should not throw, confirms success
         await sender.SendAsync(serialized, props, CancellationToken.None);
@@ -159,10 +160,9 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         // Arrange
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
-            .ConfigureCloudEvents(opts => opts.ContentMode = CloudEventsContentMode.Binary));
-        services.AddTestRabbitMq(rabbitMq.ConnectionString);
+        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
+        services.AddTestRabbitMq(rabbitMq.ConnectionString, ce => 
+            ce.ContentMode = CloudEventsAmqpContentMode.Binary);
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<ICloudEventBus>();
@@ -188,14 +188,14 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         result.Should().NotBeNull();
         result!.BasicProperties.Headers.Should().NotBeNull();
         
-        // Check for CloudEvents headers
+        // Check for CloudEvents headers (AMQP binding uses cloudEvents_ prefix)
         var headers = result.BasicProperties.Headers!;
-        headers.Should().ContainKey("ce-specversion");
-        headers.Should().ContainKey("ce-id");
-        headers.Should().ContainKey("ce-source");
-        headers.Should().ContainKey("ce-type");
+        headers.Should().ContainKey("cloudEvents_specversion");
+        headers.Should().ContainKey("cloudEvents_id");
+        headers.Should().ContainKey("cloudEvents_source");
+        headers.Should().ContainKey("cloudEvents_type");
         
-        var ceType = Encoding.UTF8.GetString((byte[])headers["ce-type"]!);
+        var ceType = Encoding.UTF8.GetString((byte[])headers["cloudEvents_type"]!);
         ceType.Should().Be("test.event");
     }
 

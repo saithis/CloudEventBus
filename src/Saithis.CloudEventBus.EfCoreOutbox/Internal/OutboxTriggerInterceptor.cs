@@ -31,7 +31,8 @@ internal class OutboxTriggerInterceptor<TDbContext>(
         while (outboxDbContext.OutboxMessages.Queue.TryPeek(out var item))
         {
             var enrichedProperties = enricher.Enrich(item.Message.GetType(), item.Properties);
-            var serializedMessage = messageSerializer.Serialize(item.Message, enrichedProperties);
+            var serializedMessage = messageSerializer.Serialize(item.Message);
+            enrichedProperties.ContentType = messageSerializer.ContentType;
             var outboxMessage = OutboxMessageEntity.Create(serializedMessage, enrichedProperties, timeProvider);
             context.Set<OutboxMessageEntity>().Add(outboxMessage);
             

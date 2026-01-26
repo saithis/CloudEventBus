@@ -1,9 +1,7 @@
-using System.Text;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using Saithis.CloudEventBus.CloudEvents;
 using Saithis.CloudEventBus.Core;
 
 namespace Saithis.CloudEventBus.RabbitMq;
@@ -12,6 +10,7 @@ public class RabbitMqConsumer(
     RabbitMqConnectionManager connectionManager,
     RabbitMqConsumerOptions options,
     MessageDispatcher dispatcher,
+    IRabbitMqEnvelopeMapper envelopeMapper,
     ILogger<RabbitMqConsumer> logger)
     : BackgroundService
 {
@@ -60,8 +59,9 @@ public class RabbitMqConsumer(
         
         try
         {
-            var context = BuildMessageContext(ea);
-            var result = await dispatcher.DispatchAsync(ea.Body.ToArray(), context, cancellationToken);
+            // Use envelope mapper to extract body and properties
+            var (body, props) = envelopeMapper.MapIncoming(ea);
+            var result = await dispatcher.DispatchAsync(body, props, cancellationToken);
             
             if (!options.AutoAck)
             {
@@ -94,46 +94,6 @@ public class RabbitMqConsumer(
                 await channel.BasicNackAsync(ea.DeliveryTag, false, true, cancellationToken);
             }
         }
-    }
-    
-    private MessageProperties BuildMessageContext(BasicDeliverEventArgs ea)
-    {
-        var headers = new Dictionary<string, string>();
-        if (ea.BasicProperties.Headers != null)
-        {
-            foreach (var header in ea.BasicProperties.Headers)
-            {
-                if (header.Value is byte[] bytes)
-                    headers[header.Key] = Encoding.UTF8.GetString(bytes);
-                else
-                    headers[header.Key] = header.Value?.ToString() ?? "";
-            }
-        }
-        
-        // Try to get CloudEvents attributes from headers (binary mode) or properties
-        var id = headers.GetValueOrDefault(CloudEventsConstants.IdHeader) 
-                 ?? ea.BasicProperties.MessageId 
-                 ?? Guid.NewGuid().ToString();
-        var type = headers.GetValueOrDefault(CloudEventsConstants.TypeHeader)
-                   ?? ea.BasicProperties.Type
-                   ?? "";
-        var source = headers.GetValueOrDefault(CloudEventsConstants.SourceHeader) ?? "/";
-        
-        DateTimeOffset? time = null;
-        if (headers.TryGetValue(CloudEventsConstants.TimeHeader, out var timeStr))
-        {
-            DateTimeOffset.TryParse(timeStr, out var parsed);
-            time = parsed;
-        }
-        
-        return new MessageProperties
-        {
-            Id = id,
-            Type = type,
-            Source = source,
-            Time = time,
-            Headers = headers,
-        };
     }
     
     public override async Task StopAsync(CancellationToken cancellationToken)

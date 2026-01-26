@@ -225,12 +225,11 @@ public class EndToEndTests(CombinedContainerFixture containers)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
-            .ConfigureCloudEvents(opts => opts.ContentMode = CloudEventsContentMode.Structured));
+        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
         services.AddTestDbContext(containers.PostgresConnectionString);
         services.AddTestOutbox<TestDbContext>();
-        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString, ce => 
+            ce.ContentMode = CloudEventsAmqpContentMode.Structured);
         
         var provider = services.BuildServiceProvider();
         
@@ -285,12 +284,11 @@ public class EndToEndTests(CombinedContainerFixture containers)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
-            .ConfigureCloudEvents(opts => opts.ContentMode = CloudEventsContentMode.Binary));
+        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
         services.AddTestDbContext(containers.PostgresConnectionString);
         services.AddTestOutbox<TestDbContext>();
-        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString, ce => 
+            ce.ContentMode = CloudEventsAmqpContentMode.Binary);
         
         var provider = services.BuildServiceProvider();
         
@@ -330,12 +328,12 @@ public class EndToEndTests(CombinedContainerFixture containers)
         var result = await channel.BasicGetAsync(queueName, autoAck: true);
         result.Should().NotBeNull();
         
-        // Verify CloudEvents headers are present
+        // Verify CloudEvents headers are present (AMQP binding uses cloudEvents_ prefix)
         result!.BasicProperties.Headers.Should().NotBeNull();
         var headers = result.BasicProperties.Headers!;
-        headers.Should().ContainKey("ce-specversion");
-        headers.Should().ContainKey("ce-type");
-        headers.Should().ContainKey("ce-source");
+        headers.Should().ContainKey("cloudEvents_specversion");
+        headers.Should().ContainKey("cloudEvents_type");
+        headers.Should().ContainKey("cloudEvents_source");
     }
 
     [Test]
@@ -549,10 +547,10 @@ public class EndToEndTests(CombinedContainerFixture containers)
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
             .AddMessage<TestEvent>("test.event")
-            .AddHandler<TestEvent, TestEventHandler>()
-            .ConfigureCloudEvents(opts => opts.ContentMode = CloudEventsContentMode.Binary));
+            .AddHandler<TestEvent, TestEventHandler>());
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString, ce => 
+            ce.ContentMode = CloudEventsAmqpContentMode.Binary);
         services.AddRabbitMqConsumer(opts =>
         {
             opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });

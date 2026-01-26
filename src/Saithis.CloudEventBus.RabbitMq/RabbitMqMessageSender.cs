@@ -3,7 +3,10 @@ using Saithis.CloudEventBus.Core;
 
 namespace Saithis.CloudEventBus.RabbitMq;
 
-public class RabbitMqMessageSender(RabbitMqConnectionManager connectionManager, RabbitMqOptions options)
+public class RabbitMqMessageSender(
+    RabbitMqConnectionManager connectionManager,
+    RabbitMqOptions options,
+    IRabbitMqEnvelopeMapper envelopeMapper)
     : IMessageSender, IAsyncDisposable
 {
     // Extension keys for routing
@@ -16,7 +19,10 @@ public class RabbitMqMessageSender(RabbitMqConnectionManager connectionManager, 
         
         var exchange = GetExchange(props);
         var routingKey = GetRoutingKey(props);
-        var basicProps = CreateBasicProperties(props);
+        var basicProps = new BasicProperties();
+        
+        // Use envelope mapper to map properties and potentially wrap content
+        var bodyToSend = envelopeMapper.MapOutgoing(content, props, basicProps);
         
         // In RabbitMQ.Client 7.x with publisher confirms enabled,
         // BasicPublishAsync returns a ValueTask that completes when the message is confirmed
@@ -25,7 +31,7 @@ public class RabbitMqMessageSender(RabbitMqConnectionManager connectionManager, 
             routingKey: routingKey,
             mandatory: false,
             basicProperties: basicProps,
-            body: content,
+            body: bodyToSend,
             cancellationToken: cancellationToken);
     }
     
@@ -42,33 +48,6 @@ public class RabbitMqMessageSender(RabbitMqConnectionManager connectionManager, 
             return routingKey;
         // Fall back to message type if available
         return props.Type ?? "";
-    }
-    
-    private static BasicProperties CreateBasicProperties(MessageProperties props)
-    {
-        var basicProps = new BasicProperties
-        {
-            ContentType = props.ContentType,
-            DeliveryMode = DeliveryModes.Persistent,
-            MessageId = Guid.NewGuid().ToString(),
-            Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
-        };
-        
-        if (props.Headers.Count > 0)
-        {
-            basicProps.Headers = new Dictionary<string, object?>();
-            foreach (var header in props.Headers)
-            {
-                basicProps.Headers[header.Key] = header.Value;
-            }
-        }
-        
-        if (!string.IsNullOrEmpty(props.Type))
-        {
-            basicProps.Type = props.Type;
-        }
-        
-        return basicProps;
     }
     
     public async ValueTask DisposeAsync()

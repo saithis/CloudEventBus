@@ -14,6 +14,9 @@ public class MessagePropertiesEnricher(MessageTypeRegistry typeRegistry) : IMess
     {
         properties ??= new MessageProperties();
         
+        // Set Time if not already set
+        properties.Time ??= DateTimeOffset.UtcNow;
+        
         // Query registry for type info
         var typeInfo = typeRegistry.GetByClrType(messageType);
         

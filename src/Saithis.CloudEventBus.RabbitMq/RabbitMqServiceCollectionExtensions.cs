@@ -7,13 +7,19 @@ public static class RabbitMqServiceCollectionExtensions
 {
     public static IServiceCollection AddRabbitMqMessageSender(
         this IServiceCollection services,
-        Action<RabbitMqOptions>? configure = null)
+        Action<RabbitMqOptions>? configure = null,
+        Action<CloudEventsAmqpOptions>? configureCloudEvents = null)
     {
         var options = new RabbitMqOptions();
         configure?.Invoke(options);
         
+        var cloudEventsOptions = new CloudEventsAmqpOptions();
+        configureCloudEvents?.Invoke(cloudEventsOptions);
+        
         services.AddSingleton(options);
+        services.AddSingleton(cloudEventsOptions);
         services.AddSingleton<RabbitMqConnectionManager>();
+        services.AddSingleton<IRabbitMqEnvelopeMapper, CloudEventsAmqpMapper>();
         services.AddSingleton<IMessageSender, RabbitMqMessageSender>();
         
         return services;
@@ -24,12 +30,18 @@ public static class RabbitMqServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddRabbitMqConsumer(
         this IServiceCollection services,
-        Action<RabbitMqConsumerOptions> configure)
+        Action<RabbitMqConsumerOptions> configure,
+        Action<CloudEventsAmqpOptions>? configureCloudEvents = null)
     {
         var options = new RabbitMqConsumerOptions();
         configure(options);
         
+        var cloudEventsOptions = new CloudEventsAmqpOptions();
+        configureCloudEvents?.Invoke(cloudEventsOptions);
+        
         services.AddSingleton(options);
+        services.AddSingleton(cloudEventsOptions);
+        services.AddSingleton<IRabbitMqEnvelopeMapper, CloudEventsAmqpMapper>();
         services.AddSingleton<MessageDispatcher>();
         services.AddHostedService<RabbitMqConsumer>();
         

@@ -32,7 +32,7 @@ public class MessageDispatcher(
         object? message;
         try
         {
-            message = deserializer.Deserialize(body, messageType, properties);
+            message = deserializer.Deserialize(body, messageType);
         }
         catch (Exception ex)
         {

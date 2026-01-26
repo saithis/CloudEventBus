@@ -307,10 +307,10 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
             .AddMessage<TestEvent>("test.event")
-            .AddHandler<TestEvent, TestEventHandler>()
-            .ConfigureCloudEvents(opts => opts.ContentMode = CloudEventsContentMode.Binary));
+            .AddHandler<TestEvent, TestEventHandler>());
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(rabbitMq.ConnectionString);
+        services.AddTestRabbitMq(rabbitMq.ConnectionString, ce => 
+            ce.ContentMode = CloudEventsAmqpContentMode.Binary);
         services.AddRabbitMqConsumer(opts =>
         {
             opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
@@ -500,10 +500,10 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
             ContentType = "application/json",
             Headers = new Dictionary<string, object?>
             {
-                ["ce-specversion"] = "1.0",
-                ["ce-type"] = eventType,
-                ["ce-source"] = "/test",
-                ["ce-id"] = Guid.NewGuid().ToString()
+                ["cloudEvents_specversion"] = "1.0",
+                ["cloudEvents_type"] = eventType,
+                ["cloudEvents_source"] = "/test",
+                ["cloudEvents_id"] = Guid.NewGuid().ToString()
             }
         };
         

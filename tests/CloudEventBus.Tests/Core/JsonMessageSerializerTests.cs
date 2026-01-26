@@ -10,20 +10,18 @@ namespace CloudEventBus.Tests.Core;
 public class JsonMessageSerializerTests
 {
     [Test]
-    public void Serialize_WritesProperJson_AndMessagePropertiesContentType()
+    public void Serialize_WritesProperJson()
     {
         // Arrange
         var serializer = new JsonMessageSerializer();
-
-        var messageProperties = new MessageProperties();
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
-        var body = serializer.Serialize(testEvent, messageProperties);
         
         // Act
+        var body = serializer.Serialize(testEvent);
         var result = JsonSerializer.Deserialize<TestEvent>(body);
         
         // Assert
-        messageProperties.ContentType.Should().Be("application/json");
+        serializer.ContentType.Should().Be("application/json");
         result.Should().NotBeNull();
         result.Id.Should().Be("123");
         result.Data.Should().Be("test data");
@@ -34,15 +32,13 @@ public class JsonMessageSerializerTests
     {
         // Arrange
         var serializer = new JsonMessageSerializer();
-
-        var messageProperties = new MessageProperties();
-        var body = serializer.Serialize(null!, messageProperties);
         
         // Act
+        var body = serializer.Serialize(null!);
         var result = JsonSerializer.Deserialize<TestEvent>(body);
         
         // Assert
-        messageProperties.ContentType.Should().Be("application/json");
+        serializer.ContentType.Should().Be("application/json");
         result.Should().BeNull();
     }
     
@@ -54,15 +50,9 @@ public class JsonMessageSerializerTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageProperties
-        {
-            Id = "event-123",
-            Type = "test.event",
-            Source = "/test",
-        };
         
         // Act
-        var result = deserializer.Deserialize<TestEvent>(body, context);
+        var result = deserializer.Deserialize<TestEvent>(body);
         
         // Assert
         result.Should().NotBeNull();
@@ -75,17 +65,10 @@ public class JsonMessageSerializerTests
     {
         // Arrange
         var deserializer = new JsonMessageSerializer();
-        
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize((TestEvent?)null));
-        var context = new MessageProperties
-        {
-            Id = "event-123",
-            Type = "test.event",
-            Source = "/test",
-        };
         
         // Act
-        var result = deserializer.Deserialize<TestEvent>(body, context);
+        var result = deserializer.Deserialize<TestEvent>(body);
         
         // Assert
         result.Should().BeNull();
@@ -99,15 +82,9 @@ public class JsonMessageSerializerTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageProperties
-        {
-            Id = "event-123",
-            Type = "test.event",
-            Source = "/test",
-        };
         
         // Act
-        var result = deserializer.Deserialize(body, typeof(TestEvent), context);
+        var result = deserializer.Deserialize(body, typeof(TestEvent));
         
         // Assert
         result.Should().NotBeNull();
@@ -130,15 +107,9 @@ public class JsonMessageSerializerTests
             CreatedAt = new DateTimeOffset(2024, 1, 15, 10, 30, 0, TimeSpan.Zero)
         };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(orderEvent));
-        var context = new MessageProperties
-        {
-            Id = "event-123",
-            Type = "order.created",
-            Source = "/orders",
-        };
         
         // Act
-        var result = deserializer.Deserialize<OrderCreatedEvent>(body, context);
+        var result = deserializer.Deserialize<OrderCreatedEvent>(body);
         
         // Assert
         result.Should().NotBeNull();

@@ -81,6 +81,7 @@ public class TestRabbitMqConsumer : RabbitMqConsumer
             new RabbitMqConnectionManager(new RabbitMqOptions { HostName = "localhost" }),
             new RabbitMqConsumerOptions(),
             CreateMockDispatcher(),
+            CreateMockMapper(),
             NullLogger<RabbitMqConsumer>.Instance)
     {
         _isHealthy = isHealthy;
@@ -104,5 +105,12 @@ public class TestRabbitMqConsumer : RabbitMqConsumer
             deserializer,
             scopeFactory,
             NullLogger<MessageDispatcher>.Instance);
+    }
+    
+    private static IRabbitMqEnvelopeMapper CreateMockMapper()
+    {
+        var options = new CloudEventsAmqpOptions();
+        var typeRegistry = new MessageTypeRegistry();
+        return new CloudEventsAmqpMapper(options, typeRegistry);
     }
 }

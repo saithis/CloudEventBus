@@ -31,15 +31,8 @@ public static class MessageBusServiceCollectionExtensions
         // Register message properties enricher
         services.AddSingleton<IMessagePropertiesEnricher, MessagePropertiesEnricher>();
         
-        // Register inner serializer
-        services.AddKeyedSingleton<IMessageSerializer, JsonMessageSerializer>("inner");
-        
-        // Register CloudEvents wrapper as the main serializer
-        services.AddSingleton<IMessageSerializer>(sp => new CloudEventsSerializer(
-            sp.GetRequiredKeyedService<IMessageSerializer>("inner"),
-            sp.GetRequiredService<CloudEventsOptions>(),
-            sp.GetRequiredService<MessageTypeRegistry>(),
-            sp.GetRequiredService<TimeProvider>()));
+        // Register serializer
+        services.AddSingleton<IMessageSerializer, JsonMessageSerializer>();
         
         services.AddSingleton<ICloudEventBus, CloudEventBus>();
         
