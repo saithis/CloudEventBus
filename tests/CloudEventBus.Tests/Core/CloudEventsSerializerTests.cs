@@ -25,7 +25,7 @@ public class CloudEventsSerializerTests
         var serializer = provider.GetRequiredService<IMessageSerializer>();
         
         var message = new TestEvent { Data = "test data" };
-        var props = new MessageEnvelope { Source = "/test" };
+        var props = new MessageProperties { Source = "/test" };
         
         // Act
         var serialized = serializer.Serialize(message, props);
@@ -56,7 +56,7 @@ public class CloudEventsSerializerTests
         var serializer = provider.GetRequiredService<IMessageSerializer>();
         
         var message = new TestEvent { Data = "test data" };
-        var props = new MessageEnvelope { Source = "/test" };
+        var props = new MessageProperties { Source = "/test" };
         
         // Act
         var serialized = serializer.Serialize(message, props);
@@ -92,7 +92,7 @@ public class CloudEventsSerializerTests
         var serializer = provider.GetRequiredService<IMessageSerializer>();
         
         var message = new EventWithoutAttribute("123"); // No CloudEvent attribute
-        var props = new MessageEnvelope(); // No explicit type
+        var props = new MessageProperties(); // No explicit type
         
         // Act & Assert
         Action act = () => serializer.Serialize(message, props);
@@ -113,7 +113,7 @@ public class CloudEventsSerializerTests
         var serializer = provider.GetRequiredService<IMessageSerializer>();
         
         var message = new TestEvent { Data = "test" };
-        var props = new MessageEnvelope 
+        var props = new MessageProperties 
         { 
             Source = "/test",
             CloudEventExtensions = 
@@ -149,7 +149,7 @@ public class CloudEventsSerializerTests
         var serializer = provider.GetRequiredService<IMessageSerializer>();
         
         var message = new TestEvent { Data = "test" };
-        var props = new MessageEnvelope 
+        var props = new MessageProperties 
         { 
             Source = "/test",
             CloudEventExtensions = 
@@ -179,7 +179,7 @@ public class CloudEventsSerializerTests
         var serializer = provider.GetRequiredService<IMessageSerializer>();
         
         var message = new TestEvent { Data = "test data" };
-        var props = new MessageEnvelope();
+        var props = new MessageProperties();
         
         // Act
         var serialized = serializer.Serialize(message, props);

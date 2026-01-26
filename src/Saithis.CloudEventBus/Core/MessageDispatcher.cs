@@ -18,12 +18,12 @@ public class MessageDispatcher(
     /// Dispatches a message to all registered handlers.
     /// All handlers run in the same DI scope.
     /// </summary>
-    public async Task<DispatchResult> DispatchAsync(byte[] body, MessageEnvelope envelope, CancellationToken cancellationToken)
+    public async Task<DispatchResult> DispatchAsync(byte[] body, MessageProperties properties, CancellationToken cancellationToken)
     {
-        var registrations = handlerRegistry.GetHandlers(envelope.Type);
+        var registrations = handlerRegistry.GetHandlers(properties.Type);
         if (registrations.Count == 0)
         {
-            logger.LogWarning("No handlers registered for event type '{EventType}'", envelope.Type);
+            logger.LogWarning("No handlers registered for event type '{EventType}'", properties.Type);
             return DispatchResult.NoHandlers;
         }
         
@@ -32,16 +32,16 @@ public class MessageDispatcher(
         object? message;
         try
         {
-            message = deserializer.Deserialize(body, messageType, envelope);
+            message = deserializer.Deserialize(body, messageType, properties);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to deserialize message of type '{EventType}'", envelope.Type);
+            logger.LogError(ex, "Failed to deserialize message of type '{EventType}'", properties.Type);
             return DispatchResult.DeserializationFailed;
         }
         if (message == null)
         {
-            logger.LogError("Failed to deserialize message of type '{EventType}'", envelope.Type);
+            logger.LogError("Failed to deserialize message of type '{EventType}'", properties.Type);
             return DispatchResult.DeserializationFailed;
         }
         
@@ -67,16 +67,16 @@ public class MessageDispatcher(
                 }
 
                 var handleMethod = registration.HandlerInterfaceType.GetMethod("HandleAsync")!;
-                var task = (Task)handleMethod.Invoke(handler, [message, envelope, cancellationToken])!;
+                var task = (Task)handleMethod.Invoke(handler, [message, properties, cancellationToken])!;
                 await task;
                 
                 logger.LogDebug("Handler '{Handler}' processed message '{Id}' of type '{Type}'", 
-                    registration.HandlerType.Name, envelope.Id, envelope.Type);
+                    registration.HandlerType.Name, properties.Id, properties.Type);
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Handler '{Handler}' failed for message '{Id}' of type '{Type}'", 
-                    registration.HandlerType.Name, envelope.Id, envelope.Type);
+                    registration.HandlerType.Name, properties.Id, properties.Type);
                 errors.Add(ex);
             }
         }
@@ -85,7 +85,7 @@ public class MessageDispatcher(
         {
             // If some handlers succeeded and some failed, throw aggregate
             throw new AggregateException(
-                $"One or more handlers failed for message '{envelope.Id}'", errors);
+                $"One or more handlers failed for message '{properties.Id}'", errors);
         }
         
         return DispatchResult.Success;

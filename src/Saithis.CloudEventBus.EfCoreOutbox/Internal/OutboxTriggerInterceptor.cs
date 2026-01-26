@@ -29,8 +29,8 @@ internal class OutboxTriggerInterceptor<TDbContext>(
         // successfully processed items are already removed, failed items remain
         while (outboxDbContext.OutboxMessages.Queue.TryPeek(out var item))
         {
-            var serializedMessage = messageSerializer.Serialize(item.Message, item.Envelope);
-            var outboxMessage = OutboxMessageEntity.Create(serializedMessage, item.Envelope, timeProvider);
+            var serializedMessage = messageSerializer.Serialize(item.Message, item.Properties);
+            var outboxMessage = OutboxMessageEntity.Create(serializedMessage, item.Properties, timeProvider);
             context.Set<OutboxMessageEntity>().Add(outboxMessage);
             
             // Only dequeue after successful serialization

@@ -96,7 +96,7 @@ public class RabbitMqConsumer(
         }
     }
     
-    private MessageEnvelope BuildMessageContext(BasicDeliverEventArgs ea)
+    private MessageProperties BuildMessageContext(BasicDeliverEventArgs ea)
     {
         var headers = new Dictionary<string, string>();
         if (ea.BasicProperties.Headers != null)
@@ -126,14 +126,13 @@ public class RabbitMqConsumer(
             time = parsed;
         }
         
-        return new MessageEnvelope
+        return new MessageProperties
         {
             Id = id,
             Type = type,
             Source = source,
             Time = time,
             Headers = headers,
-            RawBody = ea.Body.ToArray()
         };
     }
     

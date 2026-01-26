@@ -32,7 +32,7 @@ public class CloudEventBusTests
         // Assert
         sender.SentMessages.Should().HaveCount(1);
         var message = sender.SentMessages.First();
-        message.Envelope.Type.Should().Be("order.created");
+        message.Properties.Type.Should().Be("order.created");
     }
 
     [Test]
@@ -52,7 +52,7 @@ public class CloudEventBusTests
         // Assert
         sender.SentMessages.Should().HaveCount(1);
         var message = sender.SentMessages.First();
-        message.Envelope.Type.Should().Be("test.event.basic");
+        message.Properties.Type.Should().Be("test.event.basic");
     }
 
     [Test]
@@ -66,7 +66,7 @@ public class CloudEventBusTests
         var bus = provider.GetRequiredService<ICloudEventBus>();
         var sender = provider.GetRequiredService<InMemoryMessageSender>();
         
-        var customProperties = new Saithis.CloudEventBus.Core.MessageEnvelope
+        var customProperties = new Saithis.CloudEventBus.Core.MessageProperties
         {
             Type = "custom.type",
             Source = "/custom-source",
@@ -79,9 +79,9 @@ public class CloudEventBusTests
         // Assert
         sender.SentMessages.Should().HaveCount(1);
         var message = sender.SentMessages.First();
-        message.Envelope.Type.Should().Be("custom.type");
-        message.Envelope.Source.Should().Be("/custom-source");
-        message.Envelope.Subject.Should().Be("test-subject");
+        message.Properties.Type.Should().Be("custom.type");
+        message.Properties.Source.Should().Be("/custom-source");
+        message.Properties.Subject.Should().Be("test-subject");
     }
 
     [Test]
@@ -104,10 +104,10 @@ public class CloudEventBusTests
         // Assert
         sender.SentMessages.Should().HaveCount(1);
         var message = sender.SentMessages.First();
-        message.Envelope.TransportMetadata.Should().ContainKey("tenant");
-        message.Envelope.TransportMetadata["tenant"].Should().Be("test-tenant");
-        message.Envelope.TransportMetadata.Should().ContainKey("version");
-        message.Envelope.TransportMetadata["version"].Should().Be("v1");
+        message.Properties.TransportMetadata.Should().ContainKey("tenant");
+        message.Properties.TransportMetadata["tenant"].Should().Be("test-tenant");
+        message.Properties.TransportMetadata.Should().ContainKey("version");
+        message.Properties.TransportMetadata["version"].Should().Be("v1");
     }
 
     [Test]
@@ -131,8 +131,8 @@ public class CloudEventBusTests
         // Assert
         sender.SentMessages.Should().HaveCount(1);
         var message = sender.SentMessages.First();
-        message.Envelope.Time.Should().NotBeNull();
-        message.Envelope.Time!.Value.Should().BeOnOrAfter(beforePublish);
-        message.Envelope.Time!.Value.Should().BeOnOrBefore(afterPublish);
+        message.Properties.Time.Should().NotBeNull();
+        message.Properties.Time!.Value.Should().BeOnOrAfter(beforePublish);
+        message.Properties.Time!.Value.Should().BeOnOrBefore(afterPublish);
     }
 }

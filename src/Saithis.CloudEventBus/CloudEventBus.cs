@@ -9,11 +9,11 @@ public class CloudEventBus(
 {
     public async Task PublishDirectAsync<TMessage>(
         TMessage message, 
-        MessageEnvelope? props = null, 
+        MessageProperties? props = null, 
         CancellationToken cancellationToken = default)
         where TMessage : notnull
     {
-        props ??= new MessageEnvelope();
+        props ??= new MessageProperties();
         
         // Auto-populate type from registry if not explicitly set
         if (string.IsNullOrEmpty(props.Type))

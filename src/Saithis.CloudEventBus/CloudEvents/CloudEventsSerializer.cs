@@ -13,7 +13,7 @@ public class CloudEventsSerializer(
     TimeProvider timeProvider)
     : IMessageSerializer
 {
-    public byte[] Serialize(object message, MessageEnvelope props)
+    public byte[] Serialize(object message, MessageProperties props)
     {
         if (!options.Enabled)
         {
@@ -42,7 +42,7 @@ public class CloudEventsSerializer(
     }
     
     
-    public object? Deserialize(byte[] body, Type targetType, MessageEnvelope envelope)
+    public object? Deserialize(byte[] body, Type targetType, MessageProperties properties)
     {
         // TODO: detect cloud events automatically from the message context (content type header, etc.)
         if (options.Enabled && 
@@ -63,16 +63,16 @@ public class CloudEventsSerializer(
         return JsonSerializer.Deserialize(body, targetType);
     }
     
-    public TMessage? Deserialize<TMessage>(byte[] body, MessageEnvelope envelope)
+    public TMessage? Deserialize<TMessage>(byte[] body, MessageProperties properties)
     {
-        return (TMessage?)Deserialize(body, typeof(TMessage), envelope);
+        return (TMessage?)Deserialize(body, typeof(TMessage), properties);
     }
     
-    private byte[] SerializeStructured(object message, MessageEnvelope envelope)
+    private byte[] SerializeStructured(object message, MessageProperties properties)
     {
         // First serialize the data
-        var dataBytes = innerSerializer.Serialize(message, envelope);
-        var dataContentType = envelope.ContentType;
+        var dataBytes = innerSerializer.Serialize(message, properties);
+        var dataContentType = properties.ContentType;
         
         // Deserialize data to object for embedding in envelope
         // (This is inefficient but keeps the code simple - optimize later if needed)
@@ -80,22 +80,22 @@ public class CloudEventsSerializer(
         
         var cloudEvent = new CloudEventEnvelope
         {
-            Id = envelope.Id!,
-            Source = envelope.Source!,
-            Type = envelope.Type!,
-            Time = envelope.Time,
+            Id = properties.Id!,
+            Source = properties.Source!,
+            Type = properties.Type!,
+            Time = properties.Time,
             DataContentType = dataContentType,
-            Subject = envelope.Subject,
+            Subject = properties.Subject,
             Data = data,
-            Extensions = envelope.CloudEventExtensions.Count > 0 ? envelope.CloudEventExtensions : null
+            Extensions = properties.CloudEventExtensions.Count > 0 ? properties.CloudEventExtensions : null
         };
         
-        envelope.ContentType = CloudEventsConstants.JsonContentType;
+        properties.ContentType = CloudEventsConstants.JsonContentType;
         
         return JsonSerializer.SerializeToUtf8Bytes(cloudEvent);
     }
     
-    private byte[] SerializeBinary(object message, MessageEnvelope props)
+    private byte[] SerializeBinary(object message, MessageProperties props)
     {
         // Serialize data directly
         var bytes = innerSerializer.Serialize(message, props);

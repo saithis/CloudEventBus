@@ -17,27 +17,27 @@ public class OutboxStagingCollection
     /// <typeparam name="TMessage">The message type (should be registered or have [CloudEvent] attribute)</typeparam>
     /// <param name="message">The message to send</param>
     /// <param name="properties">Optional message properties</param>
-    public void Add<TMessage>(TMessage message, MessageEnvelope? properties = null) 
+    public void Add<TMessage>(TMessage message, MessageProperties? properties = null) 
         where TMessage : notnull
     {
         Queue.Enqueue(new Item
         {
             Message = message,
-            Envelope = properties ?? new MessageEnvelope()
+            Properties = properties ?? new MessageProperties()
         });
     }
 
     /// <summary>
     /// Stages a message to be sent when SaveChanges is called.
     /// </summary>
-    public void Add(object message, MessageEnvelope? properties = null)
+    public void Add(object message, MessageProperties? properties = null)
     {
         ArgumentNullException.ThrowIfNull(message);
         
         Queue.Enqueue(new Item
         {
             Message = message,
-            Envelope = properties ?? new MessageEnvelope()
+            Properties = properties ?? new MessageProperties()
         });
     }
 
@@ -49,6 +49,6 @@ public class OutboxStagingCollection
     internal class Item
     {
         internal required object Message { get; init; }
-        internal required MessageEnvelope Envelope { get; init; }
+        internal required MessageProperties Properties { get; init; }
     }
 }

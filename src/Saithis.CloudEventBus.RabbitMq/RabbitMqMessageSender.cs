@@ -10,7 +10,7 @@ public class RabbitMqMessageSender(RabbitMqConnectionManager connectionManager, 
     public const string ExchangeExtensionKey = "rabbitmq.exchange";
     public const string RoutingKeyExtensionKey = "rabbitmq.routingKey";
 
-    public async Task SendAsync(byte[] content, MessageEnvelope props, CancellationToken cancellationToken)
+    public async Task SendAsync(byte[] content, MessageProperties props, CancellationToken cancellationToken)
     {
         await using var channel = await connectionManager.CreateChannelAsync(options.UsePublisherConfirms, cancellationToken);
         
@@ -29,14 +29,14 @@ public class RabbitMqMessageSender(RabbitMqConnectionManager connectionManager, 
             cancellationToken: cancellationToken);
     }
     
-    private string GetExchange(MessageEnvelope props)
+    private string GetExchange(MessageProperties props)
     {
         if (props.TransportMetadata.TryGetValue(ExchangeExtensionKey, out var exchange))
             return exchange;
         return options.DefaultExchange;
     }
     
-    private string GetRoutingKey(MessageEnvelope props)
+    private string GetRoutingKey(MessageProperties props)
     {
         if (props.TransportMetadata.TryGetValue(RoutingKeyExtensionKey, out var routingKey))
             return routingKey;
@@ -44,7 +44,7 @@ public class RabbitMqMessageSender(RabbitMqConnectionManager connectionManager, 
         return props.Type ?? "";
     }
     
-    private static BasicProperties CreateBasicProperties(MessageEnvelope props)
+    private static BasicProperties CreateBasicProperties(MessageProperties props)
     {
         var basicProps = new BasicProperties
         {

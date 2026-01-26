@@ -64,7 +64,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
             dbContext.TestEntities.Add(entity);
             
             // Stage the event
-            dbContext.OutboxMessages.Add(new TestEvent { Data = "end-to-end test message" }, new MessageEnvelope
+            dbContext.OutboxMessages.Add(new TestEvent { Data = "end-to-end test message" }, new MessageProperties
             {
                 TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
             });
@@ -124,7 +124,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
         { 
             CustomerId = "CUST-123",
             Name = "John Doe"
-        }, new MessageEnvelope
+        }, new MessageProperties
         {
             TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "customer.updated" }
         });
@@ -177,7 +177,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
             
-            dbContext.OutboxMessages.Add(new TestEvent { Data = "test 1" }, new MessageEnvelope
+            dbContext.OutboxMessages.Add(new TestEvent { Data = "test 1" }, new MessageProperties
             {
                 TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
             });
@@ -187,12 +187,12 @@ public class EndToEndTests(CombinedContainerFixture containers)
                 OrderId = "ORDER-1",
                 Amount = 99.99m,
                 CreatedAt = DateTimeOffset.UtcNow
-            }, new MessageEnvelope
+            }, new MessageProperties
             {
                 TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "order.created" }
             });
             
-            dbContext.OutboxMessages.Add(new TestEvent { Data = "test 2" }, new MessageEnvelope
+            dbContext.OutboxMessages.Add(new TestEvent { Data = "test 2" }, new MessageProperties
             {
                 TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
             });
@@ -251,7 +251,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
         using (var scope = provider.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-            dbContext.OutboxMessages.Add(new TestEvent { Data = "structured message" }, new MessageEnvelope
+            dbContext.OutboxMessages.Add(new TestEvent { Data = "structured message" }, new MessageProperties
             {
                 TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
             });
@@ -311,7 +311,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
         using (var scope = provider.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-            dbContext.OutboxMessages.Add(new TestEvent { Data = "binary message" }, new MessageEnvelope
+            dbContext.OutboxMessages.Add(new TestEvent { Data = "binary message" }, new MessageProperties
             {
                 TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
             });
@@ -377,7 +377,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
         {
             // Act - Publish message
             await bus.PublishDirectAsync(new TestEvent { Id = "e2e-123", Data = "end-to-end test" }, 
-                new MessageEnvelope
+                new MessageProperties
                 {
                     TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
                 });
@@ -446,7 +446,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
                 var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
                 dbContext.OutboxMessages.Add(
                     new TestEvent { Id = "outbox-e2e-123", Data = "outbox to consumer test" },
-                    new MessageEnvelope
+                    new MessageProperties
                     {
                         TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
                     });
@@ -517,7 +517,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
         {
             // Act
             await bus.PublishDirectAsync(new TestEvent { Id = "multi-123", Data = "multi-handler test" },
-                new MessageEnvelope
+                new MessageProperties
                 {
                     TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
                 });
@@ -577,7 +577,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
         {
             // Act
             await bus.PublishDirectAsync(new TestEvent { Id = "binary-123", Data = "binary mode test" },
-                new MessageEnvelope
+                new MessageProperties
                 {
                     TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
                 });
@@ -638,7 +638,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
             {
                 await bus.PublishDirectAsync(
                     new TestEvent { Id = i.ToString(), Data = $"message {i}" },
-                    new MessageEnvelope
+                    new MessageProperties
                     {
                         TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
                     });

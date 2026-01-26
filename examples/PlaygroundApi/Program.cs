@@ -85,7 +85,7 @@ app.MapGet("/", () => "Hello World!");
 app.MapPost("/send", async ([FromBody] NoteDto dto, [FromServices] ICloudEventBus bus) =>
 {
     // PublishDirectAsync - sends immediately, no outbox
-    await bus.PublishDirectAsync(dto, new MessageEnvelope
+    await bus.PublishDirectAsync(dto, new MessageProperties
     {
         Type = "com.example.notes.test",
         Source = "/playground-api",
@@ -112,7 +112,7 @@ app.MapPost("/notes", async ([FromBody] NoteDto dto, [FromServices] NotesDbConte
     {
         Id = note.Id,
         Text = $"New Note: {dto.Text}",
-    }, new MessageEnvelope
+    }, new MessageProperties
     {
         TransportMetadata =
         {

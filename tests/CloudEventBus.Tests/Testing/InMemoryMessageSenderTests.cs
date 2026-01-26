@@ -15,7 +15,7 @@ public class InMemoryMessageSenderTests
         // Arrange
         var sender = new InMemoryMessageSender();
         var content = "test message"u8.ToArray();
-        var props = new MessageEnvelope { Type = "test.event" };
+        var props = new MessageProperties { Type = "test.event" };
         
         // Act
         await sender.SendAsync(content, props, CancellationToken.None);
@@ -24,7 +24,7 @@ public class InMemoryMessageSenderTests
         sender.SentMessages.Should().HaveCount(1);
         var message = sender.SentMessages.First();
         message.Content.Should().BeEquivalentTo(content);
-        message.Envelope.Type.Should().Be("test.event");
+        message.Properties.Type.Should().Be("test.event");
     }
 
     [Test]
@@ -34,13 +34,13 @@ public class InMemoryMessageSenderTests
         var sender = new InMemoryMessageSender();
         
         // Act
-        await sender.SendAsync("msg1"u8.ToArray(), new MessageEnvelope { Type = "type1" }, CancellationToken.None);
-        await sender.SendAsync("msg2"u8.ToArray(), new MessageEnvelope { Type = "type2" }, CancellationToken.None);
-        await sender.SendAsync("msg3"u8.ToArray(), new MessageEnvelope { Type = "type3" }, CancellationToken.None);
+        await sender.SendAsync("msg1"u8.ToArray(), new MessageProperties { Type = "type1" }, CancellationToken.None);
+        await sender.SendAsync("msg2"u8.ToArray(), new MessageProperties { Type = "type2" }, CancellationToken.None);
+        await sender.SendAsync("msg3"u8.ToArray(), new MessageProperties { Type = "type3" }, CancellationToken.None);
         
         // Assert - ConcurrentBag doesn't guarantee order, just verify all are captured
         sender.SentMessages.Should().HaveCount(3);
-        var types = sender.SentMessages.Select(m => m.Envelope.Type).OrderBy(t => t).ToList();
+        var types = sender.SentMessages.Select(m => m.Properties.Type).OrderBy(t => t).ToList();
         types.Should().BeEquivalentTo(new[] { "type1", "type2", "type3" });
     }
 
@@ -49,8 +49,8 @@ public class InMemoryMessageSenderTests
     {
         // Arrange
         var sender = new InMemoryMessageSender();
-        await sender.SendAsync("msg1"u8.ToArray(), new MessageEnvelope(), CancellationToken.None);
-        await sender.SendAsync("msg2"u8.ToArray(), new MessageEnvelope(), CancellationToken.None);
+        await sender.SendAsync("msg1"u8.ToArray(), new MessageProperties(), CancellationToken.None);
+        await sender.SendAsync("msg2"u8.ToArray(), new MessageProperties(), CancellationToken.None);
         sender.SentMessages.Should().HaveCount(2);
         
         // Act
@@ -74,7 +74,7 @@ public class InMemoryMessageSenderTests
             tasks.Add(Task.Run(async () =>
             {
                 var content = System.Text.Encoding.UTF8.GetBytes($"msg{index}");
-                await sender.SendAsync(content, new MessageEnvelope { Type = $"type{index}" }, CancellationToken.None);
+                await sender.SendAsync(content, new MessageProperties { Type = $"type{index}" }, CancellationToken.None);
             }));
         }
         
@@ -92,7 +92,7 @@ public class InMemoryMessageSenderTests
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var serialized = JsonSerializer.SerializeToUtf8Bytes(testEvent);
         
-        await sender.SendAsync(serialized, new MessageEnvelope(), CancellationToken.None);
+        await sender.SendAsync(serialized, new MessageProperties(), CancellationToken.None);
         
         // Act
         var message = sender.SentMessages.First();
@@ -111,7 +111,7 @@ public class InMemoryMessageSenderTests
         var sender = new InMemoryMessageSender();
         var content = "hello world"u8.ToArray();
         
-        await sender.SendAsync(content, new MessageEnvelope(), CancellationToken.None);
+        await sender.SendAsync(content, new MessageProperties(), CancellationToken.None);
         
         // Act
         var message = sender.SentMessages.First();
@@ -129,7 +129,7 @@ public class InMemoryMessageSenderTests
         var beforeSend = DateTimeOffset.UtcNow;
         
         // Act
-        await sender.SendAsync("test"u8.ToArray(), new MessageEnvelope(), CancellationToken.None);
+        await sender.SendAsync("test"u8.ToArray(), new MessageProperties(), CancellationToken.None);
         
         var afterSend = DateTimeOffset.UtcNow;
         
@@ -144,7 +144,7 @@ public class InMemoryMessageSenderTests
     {
         // Arrange
         var sender = new InMemoryMessageSender();
-        var props = new MessageEnvelope
+        var props = new MessageProperties
         {
             Type = "complex.event",
             Source = "/test-service",
@@ -161,11 +161,11 @@ public class InMemoryMessageSenderTests
         
         // Assert
         var message = sender.SentMessages.First();
-        message.Envelope.Type.Should().Be("complex.event");
-        message.Envelope.Source.Should().Be("/test-service");
-        message.Envelope.Subject.Should().Be("test-subject");
-        message.Envelope.Id.Should().Be("msg-123");
-        message.Envelope.Headers.Should().ContainKey("custom-header");
-        message.Envelope.TransportMetadata.Should().ContainKey("tenant");
+        message.Properties.Type.Should().Be("complex.event");
+        message.Properties.Source.Should().Be("/test-service");
+        message.Properties.Subject.Should().Be("test-subject");
+        message.Properties.Id.Should().Be("msg-123");
+        message.Properties.Headers.Should().ContainKey("custom-header");
+        message.Properties.TransportMetadata.Should().ContainKey("tenant");
     }
 }

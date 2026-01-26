@@ -48,7 +48,7 @@ public class TestEventHandler : IMessageHandler<TestEvent>
 {
     public List<TestEvent> HandledMessages { get; } = new();
     
-    public Task HandleAsync(TestEvent message, MessageEnvelope context, CancellationToken cancellationToken)
+    public Task HandleAsync(TestEvent message, MessageProperties context, CancellationToken cancellationToken)
     {
         HandledMessages.Add(message);
         return Task.CompletedTask;
@@ -59,7 +59,7 @@ public class SecondTestEventHandler : IMessageHandler<TestEvent>
 {
     public List<TestEvent> HandledMessages { get; } = new();
     
-    public Task HandleAsync(TestEvent message, MessageEnvelope context, CancellationToken cancellationToken)
+    public Task HandleAsync(TestEvent message, MessageProperties context, CancellationToken cancellationToken)
     {
         HandledMessages.Add(message);
         return Task.CompletedTask;
@@ -70,7 +70,7 @@ public class OrderCreatedHandler : IMessageHandler<OrderCreatedEvent>
 {
     public List<OrderCreatedEvent> HandledMessages { get; } = new();
     
-    public Task HandleAsync(OrderCreatedEvent message, MessageEnvelope context, CancellationToken cancellationToken)
+    public Task HandleAsync(OrderCreatedEvent message, MessageProperties context, CancellationToken cancellationToken)
     {
         HandledMessages.Add(message);
         return Task.CompletedTask;
@@ -79,7 +79,7 @@ public class OrderCreatedHandler : IMessageHandler<OrderCreatedEvent>
 
 public class ThrowingTestEventHandler : IMessageHandler<TestEvent>
 {
-    public Task HandleAsync(TestEvent message, MessageEnvelope context, CancellationToken cancellationToken)
+    public Task HandleAsync(TestEvent message, MessageProperties context, CancellationToken cancellationToken)
     {
         throw new InvalidOperationException("Handler failed intentionally");
     }
@@ -91,7 +91,7 @@ public class SlowTestEventHandler : IMessageHandler<TestEvent>
     
     public int ProcessingCount => _processingCount;
     
-    public async Task HandleAsync(TestEvent message, MessageEnvelope context, CancellationToken cancellationToken)
+    public async Task HandleAsync(TestEvent message, MessageProperties context, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _processingCount);
         await Task.Delay(500, cancellationToken); // Simulate slow processing

@@ -1,6 +1,6 @@
 namespace Saithis.CloudEventBus.Core;
 
-public class MessageEnvelope
+public class MessageProperties
 {
     /// <summary>
     /// Unique identifier for this event. Auto-generated if not set.
@@ -30,11 +30,6 @@ public class MessageEnvelope
     /// Content type of the data payload.
     /// </summary>
     public string? ContentType { get; set; }
-    
-    /// <summary>
-    /// The content of the message.
-    /// </summary>
-    public byte[]? RawBody { get; set; }
     
     /// <summary>
     /// Event timestamp. Auto-set to current time if not specified.

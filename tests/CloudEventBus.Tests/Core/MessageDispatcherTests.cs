@@ -4,10 +4,8 @@ using AwesomeAssertions;
 using CloudEventBus.Tests.Fixtures;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Saithis.CloudEventBus.CloudEvents;
 using Saithis.CloudEventBus.Core;
 using Saithis.CloudEventBus.Serializers.Json;
-using TUnit.Core;
 
 namespace CloudEventBus.Tests.Core;
 
@@ -28,12 +26,11 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageEnvelope
+        var context = new MessageProperties
         {
             Id = "event-123",
             Type = "test.event",
             Source = "/test",
-            RawBody = body
         };
         
         // Act
@@ -65,12 +62,11 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageEnvelope
+        var context = new MessageProperties
         {
             Id = "event-123",
             Type = "test.event",
             Source = "/test",
-            RawBody = body
         };
         
         // Act
@@ -91,12 +87,11 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageEnvelope
+        var context = new MessageProperties
         {
             Id = "event-123",
             Type = "unknown.event",
             Source = "/test",
-            RawBody = body
         };
         
         // Act
@@ -120,12 +115,11 @@ public class MessageDispatcherTests
         handlerRegistry.Freeze();
         
         var invalidBody = Encoding.UTF8.GetBytes("not valid json");
-        var context = new MessageEnvelope
+        var context = new MessageProperties
         {
             Id = "event-123",
             Type = "test.event",
             Source = "/test",
-            RawBody = invalidBody
         };
         
         // Act
@@ -151,12 +145,11 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageEnvelope
+        var context = new MessageProperties
         {
             Id = "event-123",
             Type = "test.event",
             Source = "/test",
-            RawBody = body
         };
         
         // Act
@@ -186,12 +179,11 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageEnvelope
+        var context = new MessageProperties
         {
             Id = "event-123",
             Type = "test.event",
             Source = "/test",
-            RawBody = body
         };
         
         // Act
@@ -220,12 +212,11 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageEnvelope
+        var context = new MessageProperties
         {
             Id = "event-123",
             Type = "test.event",
             Source = "/test",
-            RawBody = body
         };
         
         // Act - Dispatch twice
@@ -252,7 +243,7 @@ public class MessageDispatcherTests
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
-        var context = new MessageEnvelope
+        var context = new MessageProperties
         {
             Id = "event-123",
             Type = "test.event",
@@ -260,7 +251,6 @@ public class MessageDispatcherTests
             Subject = "test-subject",
             Time = DateTimeOffset.UtcNow,
             Headers = new Dictionary<string, string> { ["custom"] = "header" },
-            RawBody = body
         };
         
         // Act
@@ -315,7 +305,7 @@ public class ScopedServiceTestHandler : IMessageHandler<TestEvent>
 {
     public List<Guid> ServiceIds { get; } = new();
     
-    public Task HandleAsync(TestEvent message, MessageEnvelope context, CancellationToken cancellationToken)
+    public Task HandleAsync(TestEvent message, MessageProperties context, CancellationToken cancellationToken)
     {
         ServiceIds.Add(Guid.NewGuid()); // Simulate capturing service ID
         return Task.CompletedTask;
@@ -325,9 +315,9 @@ public class ScopedServiceTestHandler : IMessageHandler<TestEvent>
 // Handler that captures context
 public class ContextCapturingHandler : IMessageHandler<TestEvent>
 {
-    public MessageEnvelope? CapturedContext { get; private set; }
+    public MessageProperties? CapturedContext { get; private set; }
     
-    public Task HandleAsync(TestEvent message, MessageEnvelope context, CancellationToken cancellationToken)
+    public Task HandleAsync(TestEvent message, MessageProperties context, CancellationToken cancellationToken)
     {
         CapturedContext = context;
         return Task.CompletedTask;
