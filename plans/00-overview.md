@@ -1,82 +1,78 @@
 # CloudEventBus - Improvement Plan Overview
 
-## Current State
-
-The project has three main components:
-- **Saithis.CloudEventBus** - Core library with interfaces and basic implementations
-- **Saithis.CloudEventBus.EfCoreOutbox** - EF Core outbox pattern with interceptor-based approach
-- **Saithis.CloudEventBus.RabbitMq** - RabbitMQ sender
-
-The outbox pattern implementation uses an EF Core `SaveChangesInterceptor` to automatically convert staged messages to outbox entities, and a background processor with distributed locking.
-
-## Current goals
-
-### General:
+## Goals
 
 - Exceptional developer experience in combination RabbitMq and EfCore
-- Could also work with Kafka, etc.
-- Should send messages as CloudEvents by default, but can be disabled globally/per message
+- Abstractions to make other transports like Kafka possible
+- Send messages as CloudEvents
 - Very good error handling and recovery
 - Works with horrizontally scaled applications
+- Good Observability
+- Easy to test
 
 ### Saithis.CloudEventBus:
 
 - Generic implementation of event/message sending/receiving
 - Support for different message serializers with a default one and overwritable per message
-- Support for different broker types (RabbitMQ, Kafka, etc.)
+- Support for multiple handlers of the same message
 
 ### Saithis.CloudEventBus.RabbitMq:
 
-- RabbitMq implementations
+- RabbitMq implementations for sending, receiving and CloudEvents mapping
 
-### Saithis.CloudEventBus.EfCoreOutbox:
+### Saithis.CloudEventBus.EfCore:
 
 - Implements the Outbox pattern via EfCore 
 - Exceptional developer experience
 - Low latency
 - Low resource usage
 
-## Future goals
+## Roadmap
 
-### Message consumption
+1. DX, stability and code health
 
-- Support for multiple handlers of the same message
-- Support for the inbox pattern
-- Idempotent message processing
+    - Getting AI generated code into shape
+    - Improve DX, especially around config
+    - Message consumption: Improved error handling, retry logic, etc.
 
-### Observabillity
+1. Observabillity
 
-- metrics
-- traces
+    - metrics
+    - traces
 
-### Testing
+1. Testing
 
-- Make it easy for users to write tests for sending/receiving events/messages
-- InMemoryMessageSender that collects messages for assertions
-- FakeOutboxProcessor that processes synchronously for tests
-- Test helpers like bus.ShouldHavePublished<T>(predicate)
+    - Make it easy for users to write tests for sending/receiving events/messages
+    - InMemoryMessageSender that collects messages for assertions
+    - FakeOutboxProcessor that processes synchronously for tests
+    - Test helpers like bus.ShouldHavePublished<T>(predicate)
 
-### Tests
+1. Tests
 
-- Test everything properly
-- Prefer integration/e2e tests
-- Use unit tests only for specific cases where it makes more sense than integration/e2e tests
+    - Test everything properly
+    - Prefer integration/e2e tests
+    - Use unit tests only for specific cases where it makes more sense than integration/e2e tests
 
-### RabbitMq auto provision
+1. Inbox pattern
 
-- Auto provision queues/exchanges
-- Dead letter queue configuration
+    - Support for the inbox pattern
+    - Idempotent message processing
 
-### UI
+1. RabbitMq auto provision
 
-- See the status of the inbox/outbox
-- Requeue of poisoned messages
+    - Auto provision queues/exchanges
+    - Dead letter queue configuration
 
-### AsyncApi support
+1. UI
 
-- Also make it possible to show to which channel incoming messages belong
+    - See the status of the inbox/outbox
+    - Requeue of poisoned messages
 
-### Documentation
+1. AsyncApi support
+
+    - Also make it possible to show to which channel incoming messages belong
+
+1. Documentation
 
 ## Implementation Plans
 
@@ -92,19 +88,12 @@ The outbox pattern implementation uses an EF Core `SaveChangesInterceptor` to au
 | 06 | Add Configuration Options | ✅ Completed | OutboxOptions, builder pattern |
 | 07 | Unify Publishing API | ✅ Completed | PublishDirectAsync vs OutboxMessages.Add |
 | 08 | Testing Support | ✅ Completed | InMemoryMessageSender, SynchronousOutboxProcessor, test assertions |
+| 09 | Message Consuming | ✅ Completed | IMessageHandler, RabbitMQ consumer, multiple handlers per message |
 
 ### Future Plans
 
 | Plan | Name | Status | Notes |
 |------|------|--------|-------|
-| 09 | Message Consuming | Planned | IMessageHandler, RabbitMQ consumer, multiple handlers per message |
 | 10 | Inbox Pattern | Planned | Idempotent message handling via EF Core |
 
-### Execution Order
-1. **Plan 08** - Testing support makes it easier to test Plans 09/10
-2. **Plan 09** - Foundation for receiving messages
-3. **Plan 10** - Builds on message consuming infrastructure
 
-## Questions
-
-- Should Saithis.CloudEventBus.EfCoreOutbox be renamed to Saithis.CloudEventBus.EfCore for inbox pattern or should it be a separate package?

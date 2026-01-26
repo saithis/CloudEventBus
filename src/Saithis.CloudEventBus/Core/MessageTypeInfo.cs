@@ -18,7 +18,7 @@ public class MessageTypeInfo(
 /// <summary>
 /// Builder for configuring a message type registration.
 /// </summary>
-public class MessageTypeBuilder
+public class MessageTypeBuilder // TODO: extend MessageProperties?!? Because the config code would then also work for PublishDirectAsync and outbox
 {
     private readonly Type _clrType;
     private readonly string _eventType;
