@@ -24,10 +24,4 @@ public class QueueConsumerConfig
     /// Name of the queue to consume from.
     /// </summary>
     public required string QueueName { get; init; }
-    
-    /// <summary>
-    /// Event types expected in this queue (for routing).
-    /// If empty, accepts any registered event type.
-    /// </summary>
-    public List<string> EventTypes { get; init; } = new();
 }

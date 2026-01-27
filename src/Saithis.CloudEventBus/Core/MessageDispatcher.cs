@@ -9,7 +9,6 @@ namespace Saithis.CloudEventBus.Core;
 /// </summary>
 public class MessageDispatcher(
     MessageHandlerRegistry handlerRegistry,
-    MessageTypeRegistry typeRegistry,
     IMessageSerializer deserializer,
     IServiceScopeFactory scopeFactory,
     ILogger<MessageDispatcher> logger)
@@ -20,6 +19,12 @@ public class MessageDispatcher(
     /// </summary>
     public async Task<DispatchResult> DispatchAsync(byte[] body, MessageProperties properties, CancellationToken cancellationToken)
     {
+        if (properties.Type == null)
+        {
+            logger.LogError("Received message without a type");
+            return DispatchResult.PermanentError;
+        }
+        
         var registrations = handlerRegistry.GetHandlers(properties.Type);
         if (registrations.Count == 0)
         {
@@ -37,21 +42,22 @@ public class MessageDispatcher(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to deserialize message of type '{EventType}'", properties.Type);
-            return DispatchResult.DeserializationFailed;
+            return DispatchResult.PermanentError;
         }
         if (message == null)
         {
-            logger.LogError("Failed to deserialize message of type '{EventType}'", properties.Type);
-            return DispatchResult.DeserializationFailed;
+            logger.LogError("Message of type '{EventType}' deserialized to null", properties.Type);
+            return DispatchResult.PermanentError;
         }
         
-        using var scope = scopeFactory.CreateScope();
-        var errors = new List<Exception>();
+        var errors = 0;
         
         foreach (var registration in registrations)
         {
             try
             {
+                using var scope = scopeFactory.CreateScope();
+                
                 // Support multiple handlers of the same interface type by resolving all and matching by concrete type
                 // 1. Try to find the specific handler registration among all instances of the interface
                 var handlers = scope.ServiceProvider.GetServices(registration.HandlerInterfaceType);
@@ -63,12 +69,12 @@ public class MessageDispatcher(
                 // 3. Last resort - handle resolution failure with a clear error
                 if (handler == null)
                 {
-                    throw new InvalidOperationException($"Could not resolve handler of type {registration.HandlerType.FullName} via DI.");
+                    logger.LogWarning("Could not resolve handler of type '{HandlerType}' via DI", registration.HandlerType.FullName);
+                    return DispatchResult.PermanentError;
                 }
 
-                var handleMethod = registration.HandlerInterfaceType.GetMethod("HandleAsync")!;
-                var task = (Task)handleMethod.Invoke(handler, [message, properties, cancellationToken])!;
-                await task;
+                var handleMethod = registration.HandlerInterfaceType.GetMethod(nameof(IMessageHandler<>.HandleAsync))!;
+                await (Task)handleMethod.Invoke(handler, [message, properties, cancellationToken])!;
                 
                 logger.LogDebug("Handler '{Handler}' processed message '{Id}' of type '{Type}'", 
                     registration.HandlerType.Name, properties.Id, properties.Type);
@@ -77,18 +83,11 @@ public class MessageDispatcher(
             {
                 logger.LogError(ex, "Handler '{Handler}' failed for message '{Id}' of type '{Type}'", 
                     registration.HandlerType.Name, properties.Id, properties.Type);
-                errors.Add(ex);
+                errors++;
             }
         }
         
-        if (errors.Count > 0)
-        {
-            // If some handlers succeeded and some failed, throw aggregate
-            throw new AggregateException(
-                $"One or more handlers failed for message '{properties.Id}'", errors);
-        }
-        
-        return DispatchResult.Success;
+        return errors > 0 ? DispatchResult.RecoverableError : DispatchResult.Success;
     }
 }
 
@@ -96,5 +95,6 @@ public enum DispatchResult
 {
     Success,
     NoHandlers,
-    DeserializationFailed
+    RecoverableError,
+    PermanentError,
 }

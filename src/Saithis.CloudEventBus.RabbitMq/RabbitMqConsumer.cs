@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
@@ -28,7 +29,7 @@ public class RabbitMqConsumer(
         foreach (var queueConfig in options.Queues)
         {
             var channel = await connectionManager.CreateChannelAsync(false, stoppingToken);
-            await channel.BasicQosAsync(0, options.PrefetchCount, false);
+            await channel.BasicQosAsync(0, options.PrefetchCount, false, stoppingToken);
             
             var consumer = new AsyncEventingBasicConsumer(channel);
             consumer.ReceivedAsync += async (_, ea) =>
@@ -71,14 +72,16 @@ public class RabbitMqConsumer(
                         await channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken);
                         break;
                     case DispatchResult.NoHandlers:
-                        // No handler found - reject without requeue (goes to DLQ if configured)
                         logger.LogWarning("No handler for message '{MessageId}', rejecting", messageId);
                         await channel.BasicNackAsync(ea.DeliveryTag, false, false, cancellationToken);
                         break;
-                    case DispatchResult.DeserializationFailed:
-                        // Can't deserialize - reject without requeue (poison message)
-                        logger.LogError("Failed to deserialize message '{MessageId}', rejecting", messageId);
+                    case DispatchResult.PermanentError:
+                        logger.LogError("Unrecoverable error for message '{MessageId}', rejecting", messageId);
                         await channel.BasicNackAsync(ea.DeliveryTag, false, false, cancellationToken);
+                        break;
+                    case DispatchResult.RecoverableError:
+                        logger.LogError("Possible recoverable error for message '{MessageId}', re-queuing", messageId);
+                        await channel.BasicNackAsync(ea.DeliveryTag, false, true, cancellationToken);
                         break;
                 }
             }
