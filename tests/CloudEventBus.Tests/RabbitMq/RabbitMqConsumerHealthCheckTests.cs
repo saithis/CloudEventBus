@@ -73,7 +73,7 @@ public class RabbitMqConsumerHealthCheckTests
 }
 
 // Test double for RabbitMqConsumer that allows controlling IsHealthy
-public class TestRabbitMqConsumer : RabbitMqConsumer
+internal class TestRabbitMqConsumer : RabbitMqConsumer
 {
     private readonly bool _isHealthy;
 
@@ -83,6 +83,7 @@ public class TestRabbitMqConsumer : RabbitMqConsumer
             new RabbitMqConsumerOptions(),
             CreateMockDispatcher(),
             CreateMockMapper(),
+            new RabbitMqRetryHandler(NullLogger<RabbitMqRetryHandler>.Instance),
             NullLogger<RabbitMqConsumer>.Instance)
     {
         _isHealthy = isHealthy;
@@ -94,7 +95,6 @@ public class TestRabbitMqConsumer : RabbitMqConsumer
     {
         // Create minimal dispatcher for testing
         var handlerRegistry = new MessageHandlerRegistry();
-        var typeRegistry = new MessageTypeRegistry();
         var deserializer = new Saithis.CloudEventBus.Serializers.Json.JsonMessageSerializer();
         var services = new ServiceCollection();
         var provider = services.BuildServiceProvider();
@@ -102,7 +102,6 @@ public class TestRabbitMqConsumer : RabbitMqConsumer
         
         return new MessageDispatcher(
             handlerRegistry,
-            typeRegistry,
             deserializer,
             scopeFactory,
             NullLogger<MessageDispatcher>.Instance);

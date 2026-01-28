@@ -33,7 +33,6 @@
 
     - Getting AI generated code into shape
     - Improve DX, especially around config
-    - Message consumption: Improved error handling, retry logic, etc.
 
 1. Observabillity
 

@@ -7,11 +7,12 @@ using Saithis.CloudEventBus.Core;
 
 namespace Saithis.CloudEventBus.RabbitMq;
 
-public class RabbitMqConsumer(
+internal class RabbitMqConsumer(
     RabbitMqConnectionManager connectionManager,
     RabbitMqConsumerOptions options,
     MessageDispatcher dispatcher,
     IRabbitMqEnvelopeMapper envelopeMapper,
+    RabbitMqRetryHandler retryHandler,
     ILogger<RabbitMqConsumer> logger)
     : BackgroundService
 {
@@ -31,10 +32,16 @@ public class RabbitMqConsumer(
             var channel = await connectionManager.CreateChannelAsync(false, stoppingToken);
             await channel.BasicQosAsync(0, options.PrefetchCount, false, stoppingToken);
             
+            // Declare queue topology with retry infrastructure
+            await RabbitMqQueueTopology.DeclareQueueTopologyAsync(
+                channel,
+                queueConfig,
+                stoppingToken);
+            
             var consumer = new AsyncEventingBasicConsumer(channel);
             consumer.ReceivedAsync += async (_, ea) =>
             {
-                await HandleMessageAsync(channel, ea, stoppingToken);
+                await HandleMessageAsync(channel, ea, queueConfig, stoppingToken);
             };
             
             await channel.BasicConsumeAsync(
@@ -54,6 +61,7 @@ public class RabbitMqConsumer(
     private async Task HandleMessageAsync(
         IChannel channel, 
         BasicDeliverEventArgs ea,
+        QueueConsumerConfig queueConfig,
         CancellationToken cancellationToken)
     {
         var messageId = ea.BasicProperties.MessageId ?? Guid.NewGuid().ToString();
@@ -71,17 +79,12 @@ public class RabbitMqConsumer(
                     case DispatchResult.Success:
                         await channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken);
                         break;
+                    
                     case DispatchResult.NoHandlers:
-                        logger.LogWarning("No handler for message '{MessageId}', rejecting", messageId);
-                        await channel.BasicNackAsync(ea.DeliveryTag, false, false, cancellationToken);
-                        break;
                     case DispatchResult.PermanentError:
-                        logger.LogError("Unrecoverable error for message '{MessageId}', rejecting", messageId);
-                        await channel.BasicNackAsync(ea.DeliveryTag, false, false, cancellationToken);
-                        break;
                     case DispatchResult.RecoverableError:
-                        logger.LogError("Possible recoverable error for message '{MessageId}', re-queuing", messageId);
-                        await channel.BasicNackAsync(ea.DeliveryTag, false, true, cancellationToken);
+                        await retryHandler.HandleFailureAsync(
+                            channel, ea, queueConfig, result, cancellationToken);
                         break;
                 }
             }
@@ -92,9 +95,10 @@ public class RabbitMqConsumer(
             
             if (!options.AutoAck)
             {
-                // Handler threw - requeue for retry
-                // TODO: Consider retry count header to avoid infinite loops
-                await channel.BasicNackAsync(ea.DeliveryTag, false, true, cancellationToken);
+                // Treat exception as recoverable error
+                await retryHandler.HandleFailureAsync(
+                    channel, ea, queueConfig, 
+                    DispatchResult.RecoverableError, cancellationToken);
             }
         }
     }

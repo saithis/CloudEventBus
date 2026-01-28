@@ -2,7 +2,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Saithis.CloudEventBus.RabbitMq;
 
-public class RabbitMqConsumerHealthCheck(RabbitMqConsumer consumer) : IHealthCheck
+internal class RabbitMqConsumerHealthCheck(RabbitMqConsumer consumer) : IHealthCheck
 {
     public Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context, 

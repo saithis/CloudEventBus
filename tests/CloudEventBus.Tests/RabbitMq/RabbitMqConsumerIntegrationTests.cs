@@ -243,12 +243,11 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
     }
 
     [Test]
-    public async Task Consumer_HandlerThrows_RequeuesMessage()
+    public async Task Consumer_HandlerThrows_UsesRetryMechanism()
     {
         // Arrange
         var queueName = $"consumer-test-{Guid.NewGuid()}";
-        // Disable auto-delete so the queue persists after consumer stops
-        await CreateQueueAsync(queueName, "test.event", autoDelete: false);
+        var retryQueueName = $"{queueName}.retry";
         
         var handler = new ThrowingTestEventHandler();
         var services = new ServiceCollection();
@@ -261,7 +260,11 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddTestRabbitMq(rabbitMq.ConnectionString);
         services.AddRabbitMqConsumer(opts =>
         {
-            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
+            opts.Queues.Add(new QueueConsumerConfig 
+            { 
+                QueueName = queueName,
+                RetryDelay = TimeSpan.FromMilliseconds(500) // Short delay for testing
+            });
             opts.AutoAck = false;
         });
         
@@ -273,21 +276,16 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         {
             // Act - Publish message that will cause handler to throw
             await PublishTestMessageAsync(queueName, new TestEvent { Id = "123", Data = "test" }, "test.event");
-            // Wait for message to be processed and requeued
+            // Wait for message to be processed and moved to retry queue
             await Task.Delay(1000);
             
-            // Stop consumer to ensure unacked messages are returned to the queue as "Ready"
-            await consumer.StopAsync(CancellationToken.None);
-            
-            // Assert - Message is requeued (still in queue after error)
-            var messageCount = await GetQueueMessageCountAsync(queueName);
-            messageCount.Should().BeGreaterThanOrEqualTo(1u); // Message was requeued
+            // Assert - Message is in retry queue (using retry mechanism, not infinite requeue)
+            var retryCount = await GetQueueMessageCountAsync(retryQueueName);
+            retryCount.Should().BeGreaterThan(0u);
         }
         finally
         {
-            // Just in case it wasn't stopped in the successfully executed logic above
-            // (e.g. if the delay or stopping fails)
-            try { await consumer.StopAsync(CancellationToken.None); } catch { /* ignore */ }
+            await consumer.StopAsync(CancellationToken.None);
         }
     }
 
@@ -415,6 +413,213 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
             // Assert - Should have started processing but not completed all due to prefetch limit
             // This is a soft assertion as timing can vary
             handler.ProcessingCount.Should().BeGreaterThan(0);
+        }
+        finally
+        {
+            await consumer.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Test]
+    public async Task Consumer_WithRetryConfig_RetriesFailedMessages()
+    {
+        // Arrange
+        var queueName = $"consumer-retry-test-{Guid.NewGuid()}";
+        var retryQueueName = $"{queueName}.retry";
+        
+        var handler = new ThrowingTestEventHandler();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddCloudEventBus(bus => bus
+            .AddMessage<TestEvent>("test.event")
+            .AddHandler<TestEvent, ThrowingTestEventHandler>());
+        services.AddSingleton(handler);
+        services.AddTestRabbitMq(rabbitMq.ConnectionString);
+        services.AddRabbitMqConsumer(opts =>
+        {
+            opts.Queues.Add(new QueueConsumerConfig 
+            { 
+                QueueName = queueName,
+                MaxRetries = 2,
+                RetryDelay = TimeSpan.FromSeconds(2),
+                UseManagedRetryTopology = true
+            });
+            opts.AutoAck = false;
+        });
+        
+        var provider = services.BuildServiceProvider();
+        var consumer = provider.GetRequiredService<IHostedService>();
+        await consumer.StartAsync(CancellationToken.None);
+        
+        try
+        {
+            // Act - Publish message that will fail
+            await PublishTestMessageAsync(queueName, new TestEvent { Id = "123", Data = "test" }, "test.event");
+            
+            // Wait for initial failure and first retry
+            await Task.Delay(3000);
+            
+            // Assert - Message should be in retry queue waiting
+            var retryCount = await GetQueueMessageCountAsync(retryQueueName);
+            retryCount.Should().BeGreaterThan(0u);
+        }
+        finally
+        {
+            await consumer.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Test]
+    public async Task Consumer_WithRetryConfig_SendsToDeadLetterQueueAfterMaxRetries()
+    {
+        // Arrange
+        var queueName = $"consumer-dlq-test-{Guid.NewGuid()}";
+        var dlqName = $"{queueName}.dlq";
+        
+        var handler = new ThrowingTestEventHandler();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddCloudEventBus(bus => bus
+            .AddMessage<TestEvent>("test.event")
+            .AddHandler<TestEvent, ThrowingTestEventHandler>());
+        services.AddSingleton(handler);
+        services.AddTestRabbitMq(rabbitMq.ConnectionString);
+        services.AddRabbitMqConsumer(opts =>
+        {
+            opts.Queues.Add(new QueueConsumerConfig 
+            { 
+                QueueName = queueName,
+                MaxRetries = 2,
+                RetryDelay = TimeSpan.FromMilliseconds(500),
+                UseManagedRetryTopology = true
+            });
+            opts.AutoAck = false;
+        });
+        
+        var provider = services.BuildServiceProvider();
+        var consumer = provider.GetRequiredService<IHostedService>();
+        await consumer.StartAsync(CancellationToken.None);
+        
+        try
+        {
+            // Act - Publish message that will fail
+            await PublishTestMessageAsync(queueName, new TestEvent { Id = "123", Data = "test" }, "test.event");
+            
+            // Wait for all retries to exhaust (initial + 2 retries with delays)
+            await Task.Delay(5000);
+            
+            // Assert - Message should be in DLQ
+            var dlqCount = await GetQueueMessageCountAsync(dlqName);
+            dlqCount.Should().Be(1u);
+            
+            // Main queue should be empty
+            var mainQueueCount = await GetQueueMessageCountAsync(queueName);
+            mainQueueCount.Should().Be(0u);
+        }
+        finally
+        {
+            await consumer.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Test]
+    public async Task Consumer_WithRetryConfig_PermanentErrorGoesDirectlyToDlq()
+    {
+        // Arrange
+        var queueName = $"consumer-permanent-error-test-{Guid.NewGuid()}";
+        var dlqName = $"{queueName}.dlq";
+        
+        // No handlers registered - this will cause NoHandlers (permanent error)
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddCloudEventBus(); // No handlers
+        services.AddTestRabbitMq(rabbitMq.ConnectionString);
+        services.AddRabbitMqConsumer(opts =>
+        {
+            opts.Queues.Add(new QueueConsumerConfig 
+            { 
+                QueueName = queueName,
+                MaxRetries = 3,
+                RetryDelay = TimeSpan.FromSeconds(1),
+                UseManagedRetryTopology = true
+            });
+            opts.AutoAck = false;
+        });
+        
+        var provider = services.BuildServiceProvider();
+        var consumer = provider.GetRequiredService<IHostedService>();
+        await consumer.StartAsync(CancellationToken.None);
+        
+        try
+        {
+            // Act - Publish message with no registered handler
+            await PublishTestMessageAsync(queueName, new TestEvent { Id = "123", Data = "test" }, "unknown.event");
+            
+            // Wait for processing
+            await Task.Delay(2000);
+            
+            // Assert - Message should go directly to DLQ (no retries for permanent errors)
+            var dlqCount = await GetQueueMessageCountAsync(dlqName);
+            dlqCount.Should().Be(1u);
+        }
+        finally
+        {
+            await consumer.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Test]
+    public async Task Consumer_WithRetryConfig_CreatesQueueTopology()
+    {
+        // Arrange
+        var queueName = $"consumer-topology-test-{Guid.NewGuid()}";
+        var retryQueueName = $"{queueName}.retry";
+        var dlqName = $"{queueName}.dlq";
+        
+        var handler = new TestEventHandler();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddCloudEventBus(bus => bus
+            .AddMessage<TestEvent>("test.event")
+            .AddHandler<TestEvent, TestEventHandler>());
+        services.AddSingleton(handler);
+        services.AddTestRabbitMq(rabbitMq.ConnectionString);
+        services.AddRabbitMqConsumer(opts =>
+        {
+            opts.Queues.Add(new QueueConsumerConfig 
+            { 
+                QueueName = queueName,
+                MaxRetries = 3,
+                RetryDelay = TimeSpan.FromSeconds(30),
+                UseManagedRetryTopology = true
+            });
+            opts.AutoAck = false;
+        });
+        
+        var provider = services.BuildServiceProvider();
+        var consumer = provider.GetRequiredService<IHostedService>();
+        await consumer.StartAsync(CancellationToken.None);
+        
+        try
+        {
+            // Assert - All queues should exist
+            var factory = new ConnectionFactory { Uri = new Uri(rabbitMq.ConnectionString) };
+            await using var connection = await factory.CreateConnectionAsync();
+            await using var channel = await connection.CreateChannelAsync();
+            
+            // Verify queues exist by declaring them passively (will throw if they don't exist)
+            var mainQueueOk = await channel.QueueDeclarePassiveAsync(queueName);
+            mainQueueOk.Should().NotBeNull();
+            
+            var retryQueueOk = await channel.QueueDeclarePassiveAsync(retryQueueName);
+            retryQueueOk.Should().NotBeNull();
+            
+            var dlqOk = await channel.QueueDeclarePassiveAsync(dlqName);
+            dlqOk.Should().NotBeNull();
         }
         finally
         {

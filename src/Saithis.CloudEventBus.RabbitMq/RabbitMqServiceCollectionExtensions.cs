@@ -33,6 +33,7 @@ public static class RabbitMqServiceCollectionExtensions
         services.AddSingleton(options);
         services.AddSingleton<IRabbitMqEnvelopeMapper, CloudEventsAmqpMapper>();
         services.AddSingleton<MessageDispatcher>();
+        services.AddSingleton<RabbitMqRetryHandler>();
         services.AddHostedService<RabbitMqConsumer>();
         
         return services;
