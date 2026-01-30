@@ -2,12 +2,6 @@
 
 ## Logic
 
-### Consumer failure handling
-
-- Add dead letter queue support.
-- Delay messages for retry.
-- Make retry logic configurable.
-
 ## CloudEvents
 
 - Allow single messages to opt-in/out of cloud events.
