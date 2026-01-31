@@ -15,7 +15,7 @@ public class CloudEventBusTests
         // Arrange
         var services = new ServiceCollection();
         services.AddTestCloudEventBus(bus => bus
-            .AddMessage<OrderCreatedEvent>("order.created"));
+            .AddEventPublishChannel("order", c => c.Produces<OrderCreatedEvent>()));
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<ICloudEventBus>();
@@ -52,7 +52,7 @@ public class CloudEventBusTests
         // Assert
         sender.SentMessages.Should().HaveCount(1);
         var message = sender.SentMessages.First();
-        message.Properties.Type.Should().Be("test.event.basic");
+        message.Properties.Type.Should().Be("test.event");
     }
 
     [Test]
@@ -90,9 +90,9 @@ public class CloudEventBusTests
         // Arrange
         var services = new ServiceCollection();
         services.AddTestCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event", cfg => cfg
-                .WithExtension("tenant", "test-tenant")
-                .WithExtension("version", "v1")));
+            .AddEventPublishChannel("test", c => c.Produces<TestEvent>(m => m
+                .WithMetadata("tenant", "test-tenant")
+                .WithMetadata("version", "v1"))));
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<ICloudEventBus>();

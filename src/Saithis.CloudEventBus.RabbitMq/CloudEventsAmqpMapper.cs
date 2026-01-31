@@ -14,15 +14,14 @@ namespace Saithis.CloudEventBus.RabbitMq;
 /// </summary>
 public class CloudEventsAmqpMapper(
     CloudEventsOptions options,
-    TimeProvider timeProvider,
-    MessageTypeRegistry typeRegistry) : IRabbitMqEnvelopeMapper
+    TimeProvider timeProvider) : IRabbitMqEnvelopeMapper
 {
     public byte[] MapOutgoing(byte[] serializedData, MessageProperties props, BasicProperties outgoing)
     {
         // Ensure required CloudEvents fields are set
         props.Id ??= Guid.NewGuid().ToString(); // TODO: set this in the enricher
         props.Time ??= timeProvider.GetUtcNow(); // TODO: set this in the enricher
-        props.Source ??= ResolveSource(props) ?? options.DefaultSource; // TODO: set this in the enricher
+        props.Source ??= options.DefaultSource; // TODO: set this in the enricher
         
         if (string.IsNullOrEmpty(props.Type))
         {
@@ -277,17 +276,6 @@ public class CloudEventsAmqpMapper(
         }
         
         return (dataBytes, props);
-    }
-    
-    private string? ResolveSource(MessageProperties props)
-    {
-        // Try to resolve from registry if we have a type
-        if (!string.IsNullOrEmpty(props.Type))
-        {
-            var typeInfo = typeRegistry.GetByEventType(props.Type);
-            return typeInfo?.Source;
-        }
-        return null;
     }
     
     /// <summary>

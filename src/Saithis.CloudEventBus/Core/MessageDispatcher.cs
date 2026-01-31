@@ -8,7 +8,7 @@ namespace Saithis.CloudEventBus.Core;
 /// Supports multiple handlers per message type.
 /// </summary>
 public class MessageDispatcher(
-    MessageHandlerRegistry handlerRegistry,
+    ChannelRegistry channelRegistry,
     IMessageSerializer deserializer,
     IServiceScopeFactory scopeFactory,
     ILogger<MessageDispatcher> logger)
@@ -17,7 +17,7 @@ public class MessageDispatcher(
     /// Dispatches a message to all registered handlers.
     /// All handlers run in the same DI scope.
     /// </summary>
-    public async Task<DispatchResult> DispatchAsync(byte[] body, MessageProperties properties, CancellationToken cancellationToken)
+    public async Task<DispatchResult> DispatchAsync(byte[] body, MessageProperties properties, CancellationToken cancellationToken, string? channelName = null)
     {
         if (properties.Type == null)
         {
@@ -25,15 +25,39 @@ public class MessageDispatcher(
             return DispatchResult.PermanentError;
         }
         
-        var registrations = handlerRegistry.GetHandlers(properties.Type);
-        if (registrations.Count == 0)
+        // 1. Resolve Message Type
+        Type? messageType = null;
+        
+        // Try ChannelRegistry first (Topology based)
+        if (channelName != null)
         {
-            logger.LogWarning("No handlers registered for event type '{EventType}'", properties.Type);
-            return DispatchResult.NoHandlers;
+            var channel = channelRegistry.GetChannel(channelName);
+            var msgReg = channel?.Messages.FirstOrDefault(m => m.MessageTypeName == properties.Type);
+            if (msgReg != null)
+            {
+                messageType = msgReg.MessageType;
+            }
         }
         
-        // All handlers share the same message type, so deserialize once
-        var messageType = registrations[0].MessageType;
+        // Try global lookup in ChannelRegistry if not found in channel (or channel not provided)
+        if (messageType == null)
+        {
+             // Find any consumer channel that handles this type
+             // If multiple, this is ambiguous, but we pick first for now
+             var match = channelRegistry.FindConsumeChannelsForType(properties.Type).FirstOrDefault();
+             if (match.Message != null)
+             {
+                 messageType = match.Message.MessageType;
+             }
+        }
+
+        if (messageType == null)
+        {
+            logger.LogWarning("No registration found for event type '{EventType}'", properties.Type);
+            return DispatchResult.NoHandlers;
+        }
+
+        // 2. Deserialize
         object? message;
         try
         {
@@ -50,39 +74,35 @@ public class MessageDispatcher(
             return DispatchResult.PermanentError;
         }
         
+        // 3. Dispatch to Handlers via DI
         var errors = 0;
+        using var scope = scopeFactory.CreateScope();
         
-        foreach (var registration in registrations)
+        // Generic handler interface type: IMessageHandler<T>
+        var interfaceType = typeof(IMessageHandler<>).MakeGenericType(messageType);
+        var handlersInstances = scope.ServiceProvider.GetServices(interfaceType);
+
+        if (!handlersInstances.Any())
         {
+             logger.LogWarning("No handlers registered in DI for CLR type '{Type}' (Event: {EventType})", messageType.Name, properties.Type);
+             return DispatchResult.NoHandlers;
+        }
+
+        foreach (var handler in handlersInstances)
+        {
+            if (handler == null) continue;
             try
             {
-                using var scope = scopeFactory.CreateScope();
-                
-                // Support multiple handlers of the same interface type by resolving all and matching by concrete type
-                // 1. Try to find the specific handler registration among all instances of the interface
-                var handlers = scope.ServiceProvider.GetServices(registration.HandlerInterfaceType);
-                object? handler = handlers.FirstOrDefault(h => h != null && registration.HandlerType.IsInstanceOfType(h));
-                
-                // 2. Fallback to resolving the concrete type directly from DI
-                handler ??= scope.ServiceProvider.GetService(registration.HandlerType);
-                
-                // 3. Last resort - handle resolution failure with a clear error
-                if (handler == null)
-                {
-                    logger.LogWarning("Could not resolve handler of type '{HandlerType}' via DI", registration.HandlerType.FullName);
-                    return DispatchResult.PermanentError;
-                }
-
-                var handleMethod = registration.HandlerInterfaceType.GetMethod(nameof(IMessageHandler<>.HandleAsync))!;
+                var handleMethod = interfaceType.GetMethod(nameof(IMessageHandler<object>.HandleAsync))!;
                 await (Task)handleMethod.Invoke(handler, [message, properties, cancellationToken])!;
                 
                 logger.LogDebug("Handler '{Handler}' processed message '{Id}' of type '{Type}'", 
-                    registration.HandlerType.Name, properties.Id, properties.Type);
+                    handler.GetType().Name, properties.Id, properties.Type);
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Handler '{Handler}' failed for message '{Id}' of type '{Type}'", 
-                    registration.HandlerType.Name, properties.Id, properties.Type);
+                    handler.GetType().Name, properties.Id, properties.Type);
                 errors++;
             }
         }

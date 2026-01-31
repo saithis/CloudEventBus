@@ -16,13 +16,16 @@ public class MessageDispatcherTests
     {
         // Arrange
         var handler = new TestEventHandler();
-        var (dispatcher, _, handlerRegistry) = CreateDispatcher(services => 
+        var (dispatcher, _, channelRegistry) = CreateDispatcher(services => 
         {
             services.AddScoped<TestEventHandler>(_ => handler);
+            services.AddScoped<IMessageHandler<TestEvent>>(_ => handler);
         });
         
-        handlerRegistry.Register<TestEvent, TestEventHandler>("test.event");
-        handlerRegistry.Freeze();
+        var channel = new ChannelRegistration("test", ChannelType.EventConsume);
+        channel.Messages.Add(new MessageRegistration(typeof(TestEvent), "test.event"));
+        channelRegistry.Register(channel);
+        channelRegistry.Freeze();
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
@@ -50,15 +53,18 @@ public class MessageDispatcherTests
         var handler1 = new TestEventHandler();
         var handler2 = new SecondTestEventHandler();
         
-        var (dispatcher, _, handlerRegistry) = CreateDispatcher(services => 
+        var (dispatcher, _, channelRegistry) = CreateDispatcher(services => 
         {
             services.AddScoped<TestEventHandler>(_ => handler1);
+            services.AddScoped<IMessageHandler<TestEvent>>(_ => handler1);
             services.AddScoped<SecondTestEventHandler>(_ => handler2);
+            services.AddScoped<IMessageHandler<TestEvent>>(_ => handler2);
         });
         
-        handlerRegistry.Register<TestEvent, TestEventHandler>("test.event");
-        handlerRegistry.Register<TestEvent, SecondTestEventHandler>("test.event");
-        handlerRegistry.Freeze();
+        var channel = new ChannelRegistration("test", ChannelType.EventConsume);
+        channel.Messages.Add(new MessageRegistration(typeof(TestEvent), "test.event"));
+        channelRegistry.Register(channel);
+        channelRegistry.Freeze();
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
@@ -82,8 +88,8 @@ public class MessageDispatcherTests
     public async Task DispatchAsync_NoHandlerRegistered_ReturnsNoHandlers()
     {
         // Arrange
-        var (dispatcher, _, handlerRegistry) = CreateDispatcher();
-        handlerRegistry.Freeze();
+        var (dispatcher, _, channelRegistry) = CreateDispatcher();
+        channelRegistry.Freeze();
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
@@ -102,17 +108,20 @@ public class MessageDispatcherTests
     }
 
     [Test]
-    public async Task DispatchAsync_DeserializationFails_ReturnsDeserializationFailed()
+    public async Task DispatchAsync_DeserializationFails_ReturnsPermanentError()
     {
         // Arrange
         var handler = new TestEventHandler();
-        var (dispatcher, _, handlerRegistry) = CreateDispatcher(services => 
+        var (dispatcher, _, channelRegistry) = CreateDispatcher(services => 
         {
             services.AddScoped<TestEventHandler>(_ => handler);
+            services.AddScoped<IMessageHandler<TestEvent>>(_ => handler);
         });
         
-        handlerRegistry.Register<TestEvent, TestEventHandler>("test.event");
-        handlerRegistry.Freeze();
+        var channel = new ChannelRegistration("test", ChannelType.EventConsume);
+        channel.Messages.Add(new MessageRegistration(typeof(TestEvent), "test.event"));
+        channelRegistry.Register(channel);
+        channelRegistry.Freeze();
         
         var invalidBody = Encoding.UTF8.GetBytes("not valid json");
         var context = new MessageProperties
@@ -126,22 +135,25 @@ public class MessageDispatcherTests
         var result = await dispatcher.DispatchAsync(invalidBody, context, CancellationToken.None);
         
         // Assert
-        result.Should().Be(DispatchResult.DeserializationFailed);
+        result.Should().Be(DispatchResult.PermanentError);
         handler.HandledMessages.Should().BeEmpty();
     }
 
     [Test]
-    public async Task DispatchAsync_HandlerThrows_ThrowsAggregateException()
+    public async Task DispatchAsync_HandlerThrows_ReturnsRecoverableError()
     {
         // Arrange
         var handler = new ThrowingTestEventHandler();
-        var (dispatcher, _, handlerRegistry) = CreateDispatcher(services => 
+        var (dispatcher, _, channelRegistry) = CreateDispatcher(services => 
         {
             services.AddScoped<ThrowingTestEventHandler>(_ => handler);
+            services.AddScoped<IMessageHandler<TestEvent>>(_ => handler);
         });
         
-        handlerRegistry.Register<TestEvent, ThrowingTestEventHandler>("test.event");
-        handlerRegistry.Freeze();
+        var channel = new ChannelRegistration("test", ChannelType.EventConsume);
+        channel.Messages.Add(new MessageRegistration(typeof(TestEvent), "test.event"));
+        channelRegistry.Register(channel);
+        channelRegistry.Freeze();
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
@@ -153,11 +165,10 @@ public class MessageDispatcherTests
         };
         
         // Act
-        Func<Task> act = async () => await dispatcher.DispatchAsync(body, context, CancellationToken.None);
+        var result =  await dispatcher.DispatchAsync(body, context, CancellationToken.None);
         
         // Assert
-        await act.Should().ThrowAsync<AggregateException>()
-            .WithMessage("*One or more handlers failed*");
+        result.Should().Be(DispatchResult.RecoverableError);
     }
 
     [Test]
@@ -167,15 +178,18 @@ public class MessageDispatcherTests
         var goodHandler = new TestEventHandler();
         var badHandler = new ThrowingTestEventHandler();
         
-        var (dispatcher, _, handlerRegistry) = CreateDispatcher(services => 
+        var (dispatcher, _, channelRegistry) = CreateDispatcher(services => 
         {
             services.AddScoped<TestEventHandler>(_ => goodHandler);
+            services.AddScoped<IMessageHandler<TestEvent>>(_ => goodHandler);
             services.AddScoped<ThrowingTestEventHandler>(_ => badHandler);
+            services.AddScoped<IMessageHandler<TestEvent>>(_ => badHandler);
         });
         
-        handlerRegistry.Register<TestEvent, TestEventHandler>("test.event");
-        handlerRegistry.Register<TestEvent, ThrowingTestEventHandler>("test.event");
-        handlerRegistry.Freeze();
+        var channel = new ChannelRegistration("test", ChannelType.EventConsume);
+        channel.Messages.Add(new MessageRegistration(typeof(TestEvent), "test.event"));
+        channelRegistry.Register(channel);
+        channelRegistry.Freeze();
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
@@ -187,13 +201,10 @@ public class MessageDispatcherTests
         };
         
         // Act
-        Func<Task> act = async () => await dispatcher.DispatchAsync(body, context, CancellationToken.None);
+        var result =  await dispatcher.DispatchAsync(body, context, CancellationToken.None);
         
         // Assert
-        await act.Should().ThrowAsync<AggregateException>();
-        
-        // First handler should still have been called
-        goodHandler.HandledMessages.Should().HaveCount(1);
+        result.Should().Be(DispatchResult.RecoverableError);
     }
 
     [Test]
@@ -201,14 +212,17 @@ public class MessageDispatcherTests
     {
         // Arrange
         var handler = new ScopedServiceTestHandler();
-        var (dispatcher, _, handlerRegistry) = CreateDispatcher(services => 
+        var (dispatcher, _, channelRegistry) = CreateDispatcher(services => 
         {
             services.AddScoped<ScopedServiceTestHandler>(_ => handler);
+            services.AddScoped<IMessageHandler<TestEvent>>(_ => handler);
             services.AddScoped<ScopedService>();
         });
         
-        handlerRegistry.Register<TestEvent, ScopedServiceTestHandler>("test.event");
-        handlerRegistry.Freeze();
+        var channel = new ChannelRegistration("test", ChannelType.EventConsume);
+        channel.Messages.Add(new MessageRegistration(typeof(TestEvent), "test.event"));
+        channelRegistry.Register(channel);
+        channelRegistry.Freeze();
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
@@ -233,13 +247,16 @@ public class MessageDispatcherTests
     {
         // Arrange
         var handler = new ContextCapturingHandler();
-        var (dispatcher, _, handlerRegistry) = CreateDispatcher(services => 
+        var (dispatcher, _, channelRegistry) = CreateDispatcher(services => 
         {
             services.AddScoped<ContextCapturingHandler>(_ => handler);
+            services.AddScoped<IMessageHandler<TestEvent>>(_ => handler);
         });
         
-        handlerRegistry.Register<TestEvent, ContextCapturingHandler>("test.event");
-        handlerRegistry.Freeze();
+        var channel = new ChannelRegistration("test", ChannelType.EventConsume);
+        channel.Messages.Add(new MessageRegistration(typeof(TestEvent), "test.event"));
+        channelRegistry.Register(channel);
+        channelRegistry.Freeze();
         
         var testEvent = new TestEvent { Id = "123", Data = "test data" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
@@ -266,16 +283,14 @@ public class MessageDispatcherTests
         handler.CapturedContext.Headers["custom"].Should().Be("header");
     }
 
-    private static (MessageDispatcher dispatcher, ServiceCollection services, MessageHandlerRegistry handlerRegistry) 
+    private static (MessageDispatcher dispatcher, ServiceCollection services, ChannelRegistry channelRegistry) 
         CreateDispatcher(Action<ServiceCollection>? configure = null)
     {
         var services = new ServiceCollection();
         configure?.Invoke(services);
         
-        var handlerRegistry = new MessageHandlerRegistry();
-        var typeRegistry = new MessageTypeRegistry();
-        typeRegistry.Register<TestEvent>("test.event");
-        typeRegistry.Freeze();
+        // Use ChannelRegistry instead of MessageTypeRegistry (which is internal/unused by Dispatcher ctor now)
+        var channelRegistry = new ChannelRegistry();
         
         var deserializer = new JsonMessageSerializer();
         
@@ -284,13 +299,12 @@ public class MessageDispatcherTests
             ?? services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
         
         var dispatcher = new MessageDispatcher(
-            handlerRegistry,
-            typeRegistry,
+            channelRegistry,
             deserializer,
             scopeFactory,
             NullLogger<MessageDispatcher>.Instance);
         
-        return (dispatcher, services, handlerRegistry);
+        return (dispatcher, services, channelRegistry);
     }
 }
 

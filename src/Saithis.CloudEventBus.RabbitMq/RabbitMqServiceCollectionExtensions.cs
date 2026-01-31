@@ -16,6 +16,7 @@ public static class RabbitMqServiceCollectionExtensions
         services.AddSingleton<RabbitMqConnectionManager>();
         services.AddSingleton<IRabbitMqEnvelopeMapper, CloudEventsAmqpMapper>();
         services.AddSingleton<IMessageSender, RabbitMqMessageSender>();
+        services.AddSingleton<RabbitMqTopologyManager>();
         
         return services;
     }
@@ -24,16 +25,15 @@ public static class RabbitMqServiceCollectionExtensions
     /// Adds RabbitMQ message consuming support.
     /// </summary>
     public static IServiceCollection AddRabbitMqConsumer(
-        this IServiceCollection services,
-        Action<RabbitMqConsumerOptions> configure)
+        this IServiceCollection services)
     {
-        var options = new RabbitMqConsumerOptions();
-        configure(options);
+        // No explicit config action anymore, config is in ChannelRegistry.
+        // But we might want global settings later? For now, remove action.
         
-        services.AddSingleton(options);
         services.AddSingleton<IRabbitMqEnvelopeMapper, CloudEventsAmqpMapper>();
         services.AddSingleton<MessageDispatcher>();
         services.AddSingleton<RabbitMqRetryHandler>();
+        services.AddSingleton<RabbitMqTopologyManager>();
         services.AddHostedService<RabbitMqConsumer>();
         
         return services;

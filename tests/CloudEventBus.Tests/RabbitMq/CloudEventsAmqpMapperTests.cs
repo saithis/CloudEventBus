@@ -20,11 +20,7 @@ public class CloudEventsAmqpMapperTests
         { 
             ContentMode = CloudEventsContentMode.Binary 
         };
-        var registry = new MessageTypeRegistry();
-        registry.Register<TestEvent>("test.event");
-        registry.Freeze();
-        
-        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System);
         var serializedData = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new TestEvent { Data = "test" }));
         var props = new MessageProperties 
         { 
@@ -60,11 +56,7 @@ public class CloudEventsAmqpMapperTests
         { 
             ContentMode = CloudEventsContentMode.Structured 
         };
-        var registry = new MessageTypeRegistry();
-        registry.Register<TestEvent>("test.event");
-        registry.Freeze();
-        
-        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System);
         var testEvent = new TestEvent { Data = "test" };
         var serializedData = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
         var props = new MessageProperties 
@@ -98,8 +90,7 @@ public class CloudEventsAmqpMapperTests
         { 
             ContentMode = CloudEventsContentMode.Binary 
         };
-        var registry = new MessageTypeRegistry();
-        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System);
         
         var serializedData = Encoding.UTF8.GetBytes("{}");
         var props = new MessageProperties 
@@ -129,8 +120,7 @@ public class CloudEventsAmqpMapperTests
     {
         // Arrange
         var options = new CloudEventsOptions();
-        var registry = new MessageTypeRegistry();
-        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System);
         
         var testEvent = new TestEvent { Data = "test" };
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(testEvent));
@@ -177,8 +167,7 @@ public class CloudEventsAmqpMapperTests
     {
         // Arrange
         var options = new CloudEventsOptions();
-        var registry = new MessageTypeRegistry();
-        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System);
         
         var testEvent = new TestEvent { Data = "test" };
         var envelope = new CloudEventEnvelope
@@ -228,8 +217,7 @@ public class CloudEventsAmqpMapperTests
     {
         // Arrange (Wolverine compatibility: support both cloudEvents_ and cloudEvents: prefixes)
         var options = new CloudEventsOptions();
-        var registry = new MessageTypeRegistry();
-        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System);
         
         var body = Encoding.UTF8.GetBytes("{}");
         var basicProps = new BasicProperties { ContentType = "application/json" };
@@ -264,8 +252,7 @@ public class CloudEventsAmqpMapperTests
     {
         // Arrange
         var options = new CloudEventsOptions();
-        var registry = new MessageTypeRegistry();
-        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System);
         
         var serializedData = Encoding.UTF8.GetBytes("{}");
         var props = new MessageProperties { Source = "/test" }; // No type
@@ -282,8 +269,7 @@ public class CloudEventsAmqpMapperTests
     {
         // Arrange (Wolverine compatibility)
         var options = new CloudEventsOptions();
-        var registry = new MessageTypeRegistry();
-        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System, registry);
+        var mapper = new CloudEventsAmqpMapper(options, TimeProvider.System);
         
         var body = Encoding.UTF8.GetBytes("{}");
         var basicProps = new BasicProperties

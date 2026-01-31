@@ -10,6 +10,7 @@ using Saithis.CloudEventBus.CloudEvents;
 using Saithis.CloudEventBus.Core;
 using Saithis.CloudEventBus.EfCore.Testing;
 using Saithis.CloudEventBus.RabbitMq;
+using Saithis.CloudEventBus.RabbitMq.Config;
 using TUnit.Core;
 
 namespace CloudEventBus.Tests.Integration;
@@ -21,6 +22,9 @@ namespace CloudEventBus.Tests.Integration;
 [NotInParallel("RabbitMQ")] // Tests use shared exchange and may interfere
 public class EndToEndTests(CombinedContainerFixture containers)
 {
+    private const string TestEventType = "test.event.basic";
+    private const string TestExchange = "test";
+
     [Test]
     public async Task Outbox_ToRabbitMq_FullFlow()
     {
@@ -28,12 +32,14 @@ public class EndToEndTests(CombinedContainerFixture containers)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
+        services.AddCloudEventBus(bus => bus.AddEventPublishChannel(TestExchange, c => c.Produces<TestEvent>()));
         services.AddTestDbContext(containers.PostgresConnectionString);
         services.AddTestOutbox<TestDbContext>();
         services.AddTestRabbitMq(containers.RabbitMqConnectionString);
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
         // Ensure database is created
         using (var scope = provider.CreateScope())
@@ -48,7 +54,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
         await using var connection = await factory.CreateConnectionAsync();
         await using var channel = await connection.CreateChannelAsync();
         await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: true, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        await channel.QueueBindAsync(queue: queueName, exchange: TestExchange, routingKey: TestEventType);
         
         // Act - Stage message in outbox via DbContext
         using (var scope = provider.CreateScope())
@@ -66,7 +72,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
             // Stage the event
             dbContext.OutboxMessages.Add(new TestEvent { Data = "end-to-end test message" }, new MessageProperties
             {
-                TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = TestEventType }
             });
             
             await dbContext.SaveChangesAsync();
@@ -105,10 +111,12 @@ public class EndToEndTests(CombinedContainerFixture containers)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<CustomerUpdatedEvent>("customer.updated"));
+        services.AddCloudEventBus(bus => bus.AddEventPublishChannel(TestExchange, c => c.Produces<CustomerUpdatedEvent>()));
         services.AddTestRabbitMq(containers.RabbitMqConnectionString);
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         var bus = provider.GetRequiredService<ICloudEventBus>();
         
         // Setup RabbitMQ queue
@@ -117,7 +125,9 @@ public class EndToEndTests(CombinedContainerFixture containers)
         await using var connection = await factory.CreateConnectionAsync();
         await using var channel = await connection.CreateChannelAsync();
         await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: true, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "customer.updated");
+        
+        // CustomerUpdatedEvent has CloudEvent attribute "customer.updated"
+        await channel.QueueBindAsync(queue: queueName, exchange: TestExchange, routingKey: "customer.updated");
         
         // Act - Publish directly (no outbox)
         await bus.PublishDirectAsync(new CustomerUpdatedEvent 
@@ -145,13 +155,17 @@ public class EndToEndTests(CombinedContainerFixture containers)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
-            .AddMessage<OrderCreatedEvent>("order.created"));
+            .AddEventPublishChannel(TestExchange, c => c
+                .Produces<TestEvent>()
+                .Produces<OrderCreatedEvent>()));
+                
         services.AddTestDbContext(containers.PostgresConnectionString);
         services.AddTestOutbox<TestDbContext>();
         services.AddTestRabbitMq(containers.RabbitMqConnectionString);
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
         using (var scope = provider.CreateScope())
         {
@@ -167,10 +181,10 @@ public class EndToEndTests(CombinedContainerFixture containers)
         await using var channel = await connection.CreateChannelAsync();
         
         await channel.QueueDeclareAsync(queue: testEventQueue, durable: false, exclusive: true, autoDelete: true);
-        await channel.QueueBindAsync(queue: testEventQueue, exchange: "test.exchange", routingKey: "test.event");
+        await channel.QueueBindAsync(queue: testEventQueue, exchange: TestExchange, routingKey: TestEventType);
         
         await channel.QueueDeclareAsync(queue: orderCreatedQueue, durable: false, exclusive: true, autoDelete: true);
-        await channel.QueueBindAsync(queue: orderCreatedQueue, exchange: "test.exchange", routingKey: "order.created");
+        await channel.QueueBindAsync(queue: orderCreatedQueue, exchange: TestExchange, routingKey: "order.created");
         
         // Act - Stage multiple messages of different types
         using (var scope = provider.CreateScope())
@@ -179,7 +193,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
             
             dbContext.OutboxMessages.Add(new TestEvent { Data = "test 1" }, new MessageProperties
             {
-                TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = TestEventType }
             });
             
             dbContext.OutboxMessages.Add(new OrderCreatedEvent 
@@ -194,7 +208,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
             
             dbContext.OutboxMessages.Add(new TestEvent { Data = "test 2" }, new MessageProperties
             {
-                TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = TestEventType }
             });
             
             await dbContext.SaveChangesAsync();
@@ -225,13 +239,15 @@ public class EndToEndTests(CombinedContainerFixture containers)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event")
+        services.AddCloudEventBus(bus => bus.AddEventPublishChannel(TestExchange, c => c.Produces<TestEvent>())
             .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Structured));
         services.AddTestDbContext(containers.PostgresConnectionString);
         services.AddTestOutbox<TestDbContext>();
         services.AddTestRabbitMq(containers.RabbitMqConnectionString);
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
         using (var scope = provider.CreateScope())
         {
@@ -244,7 +260,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
         await using var connection = await factory.CreateConnectionAsync();
         await using var channel = await connection.CreateChannelAsync();
         await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: true, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        await channel.QueueBindAsync(queue: queueName, exchange: TestExchange, routingKey: TestEventType);
         
         // Act
         using (var scope = provider.CreateScope())
@@ -252,7 +268,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
             dbContext.OutboxMessages.Add(new TestEvent { Data = "structured message" }, new MessageProperties
             {
-                TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = TestEventType }
             });
             await dbContext.SaveChangesAsync();
         }
@@ -284,13 +300,15 @@ public class EndToEndTests(CombinedContainerFixture containers)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event")
+        services.AddCloudEventBus(bus => bus.AddEventPublishChannel(TestExchange, c => c.Produces<TestEvent>())
             .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Binary));
         services.AddTestDbContext(containers.PostgresConnectionString);
         services.AddTestOutbox<TestDbContext>();
         services.AddTestRabbitMq(containers.RabbitMqConnectionString);
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
         using (var scope = provider.CreateScope())
         {
@@ -303,7 +321,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
         await using var connection = await factory.CreateConnectionAsync();
         await using var channel = await connection.CreateChannelAsync();
         await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: true, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        await channel.QueueBindAsync(queue: queueName, exchange: TestExchange, routingKey: TestEventType);
         
         // Act
         using (var scope = provider.CreateScope())
@@ -311,7 +329,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
             dbContext.OutboxMessages.Add(new TestEvent { Data = "binary message" }, new MessageProperties
             {
-                TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = TestEventType }
             });
             await dbContext.SaveChangesAsync();
         }
@@ -347,25 +365,28 @@ public class EndToEndTests(CombinedContainerFixture containers)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, TestEventHandler>());
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
-            opts.AutoAck = false;
-        });
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+
         var bus = provider.GetRequiredService<ICloudEventBus>();
         
-        // Setup queue
-        var factory = new ConnectionFactory { Uri = new Uri(containers.RabbitMqConnectionString) };
-        await using var connection = await factory.CreateConnectionAsync();
-        await using var channel = await connection.CreateChannelAsync();
-        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        // Setup queue - handled by consumer, but also need to ensure publishing works.
+        // DirectPublishAsync sends with routing key. If using default exchange (""), routing key must match queue name.
+        // We need to ensure message has correct RoutingKey in metadata if publishing direct to queue?
+        // Wait, PublishDirectAsync uses "transportMetadata: { [RabbitMqMessageSender.RoutingKeyExtensionKey] = ... }"
+        // If we set it to queueName, it goes to queueName.
         
         // Start consumer
         var consumer = provider.GetRequiredService<IHostedService>();
@@ -377,7 +398,8 @@ public class EndToEndTests(CombinedContainerFixture containers)
             await bus.PublishDirectAsync(new TestEvent { Id = "e2e-123", Data = "end-to-end test" }, 
                 new MessageProperties
                 {
-                    TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                    // Publish direct to the queue name (acting as command)
+                    TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = queueName }
                 });
             
             // Wait for message to be consumed
@@ -405,32 +427,31 @@ public class EndToEndTests(CombinedContainerFixture containers)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+             .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, TestEventHandler>());
         services.AddSingleton(handler);
         services.AddTestDbContext(containers.PostgresConnectionString);
         services.AddTestOutbox<TestDbContext>();
-        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
-            opts.AutoAck = false;
-        });
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
-        // Setup database and queue
+        // Setup database
         using (var scope = provider.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
             await dbContext.Database.EnsureCreatedAsync();
         }
         
-        var factory = new ConnectionFactory { Uri = new Uri(containers.RabbitMqConnectionString) };
-        await using var connection = await factory.CreateConnectionAsync();
-        await using var channel = await connection.CreateChannelAsync();
-        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        // Queue setup by consumer start
         
         // Start consumer
         var consumer = provider.GetRequiredService<IHostedService>();
@@ -446,7 +467,8 @@ public class EndToEndTests(CombinedContainerFixture containers)
                     new TestEvent { Id = "outbox-e2e-123", Data = "outbox to consumer test" },
                     new MessageProperties
                     {
-                        TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                        // Route directly to queue name
+                        TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = queueName }
                     });
                 await dbContext.SaveChangesAsync();
             }
@@ -485,27 +507,23 @@ public class EndToEndTests(CombinedContainerFixture containers)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, TestEventHandler>()
             .AddHandler<TestEvent, SecondTestEventHandler>());
         services.AddSingleton(handler1);
         services.AddSingleton(handler2);
-        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
-            opts.AutoAck = false;
-        });
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         var bus = provider.GetRequiredService<ICloudEventBus>();
-        
-        // Setup queue
-        var factory = new ConnectionFactory { Uri = new Uri(containers.RabbitMqConnectionString) };
-        await using var connection = await factory.CreateConnectionAsync();
-        await using var channel = await connection.CreateChannelAsync();
-        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
         
         // Start consumer
         var consumer = provider.GetRequiredService<IHostedService>();
@@ -517,7 +535,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
             await bus.PublishDirectAsync(new TestEvent { Id = "multi-123", Data = "multi-handler test" },
                 new MessageProperties
                 {
-                    TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                    TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = queueName }
                 });
             
             await Task.Delay(1500);
@@ -546,27 +564,24 @@ public class EndToEndTests(CombinedContainerFixture containers)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, TestEventHandler>()
             .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Binary));
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
-            opts.AutoAck = false;
-        });
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var bus = provider.GetRequiredService<ICloudEventBus>();
-        
-        // Setup queue
-        var factory = new ConnectionFactory { Uri = new Uri(containers.RabbitMqConnectionString) };
-        await using var connection = await factory.CreateConnectionAsync();
-        await using var channel = await connection.CreateChannelAsync();
-        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
-        
+
         // Start consumer
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
@@ -577,7 +592,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
             await bus.PublishDirectAsync(new TestEvent { Id = "binary-123", Data = "binary mode test" },
                 new MessageProperties
                 {
-                    TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                    TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = queueName }
                 });
             
             await Task.Delay(1500);
@@ -604,26 +619,23 @@ public class EndToEndTests(CombinedContainerFixture containers)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .Prefetch(10)
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, TestEventHandler>());
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(containers.RabbitMqConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
-            opts.AutoAck = false;
-            opts.PrefetchCount = 10;
-        });
+        services.AddTestRabbitMq(containers.RabbitMqConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
-        var bus = provider.GetRequiredService<ICloudEventBus>();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
-        // Setup queue
-        var factory = new ConnectionFactory { Uri = new Uri(containers.RabbitMqConnectionString) };
-        await using var connection = await factory.CreateConnectionAsync();
-        await using var channel = await connection.CreateChannelAsync();
-        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        var bus = provider.GetRequiredService<ICloudEventBus>();
         
         // Start consumer
         var consumer = provider.GetRequiredService<IHostedService>();
@@ -638,7 +650,7 @@ public class EndToEndTests(CombinedContainerFixture containers)
                     new TestEvent { Id = i.ToString(), Data = $"message {i}" },
                     new MessageProperties
                     {
-                        TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = "test.event" }
+                        TransportMetadata = { [RabbitMqMessageSender.RoutingKeyExtensionKey] = queueName }
                     });
             }
             

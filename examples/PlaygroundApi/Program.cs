@@ -20,8 +20,16 @@ var lockFileDirectory = new DirectoryInfo(Environment.CurrentDirectory); // choo
 builder.Services.AddSingleton<IDistributedLockProvider>(_ => new FileDistributedSynchronizationProvider(lockFileDirectory));
 
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
-builder.Services.AddCloudEventBus(bus => bus
-    .AddMessagesFromAssemblyContaining<NoteAddedEvent>());
+builder.Services.AddCloudEventBus(bus =>
+{
+    bus
+        .AddEventPublishChannel("events.topic", c => c
+            .WithRabbitMq(r =>
+            {
+                r.ExchangeTypeTopic();
+            })
+            .Produces<NoteAddedEvent>());
+});
 
 // Use RabbitMQ when connection string is available (Aspire), otherwise use Console for testing
 var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmq");

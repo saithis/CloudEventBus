@@ -20,12 +20,15 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
+        services.AddCloudEventBus(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
         services.AddTestRabbitMq(rabbitMq.ConnectionString);
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<ICloudEventBus>();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
         // Create a queue to receive the message
         var queueName = $"test-queue-{Guid.NewGuid()}";
@@ -34,7 +37,7 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         await using var channel = await connection.CreateChannelAsync();
         
         await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: true, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        await channel.QueueBindAsync(queue: queueName, exchange: "test", routingKey: "test.event");
         
         // Act
         await bus.PublishDirectAsync(new TestEvent { Data = "test message" }, new MessageProperties
@@ -56,17 +59,20 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
+        services.AddCloudEventBus(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
         services.AddRabbitMqMessageSender(options =>
         {
             options.ConnectionString = rabbitMq.ConnectionString;
-            options.DefaultExchange = "test.exchange";
+            options.DefaultExchange = "test";
             options.UsePublisherConfirms = true; // Enable confirms
         });
         
         var provider = services.BuildServiceProvider();
         var sender = provider.GetRequiredService<IMessageSender>();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
         var message = new TestEvent { Data = "confirmed message" };
         var props = new MessageProperties { Type = "test.event" };
@@ -87,12 +93,15 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
+        services.AddCloudEventBus(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
         services.AddTestRabbitMq(rabbitMq.ConnectionString);
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<ICloudEventBus>();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
         // Create queue bound to custom routing key
         var customRoutingKey = "custom.routing.key";
@@ -102,7 +111,7 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         await using var channel = await connection.CreateChannelAsync();
         
         await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: true, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: customRoutingKey);
+        await channel.QueueBindAsync(queue: queueName, exchange: "test", routingKey: customRoutingKey);
         
         // Act
         await bus.PublishDirectAsync(new TestEvent { Data = "routed message" }, new MessageProperties
@@ -122,12 +131,15 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
+        services.AddCloudEventBus(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
         services.AddTestRabbitMq(rabbitMq.ConnectionString);
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<ICloudEventBus>();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
         var queueName = $"test-queue-{Guid.NewGuid()}";
         var factory = new ConnectionFactory { Uri = new Uri(rabbitMq.ConnectionString) };
@@ -135,7 +147,7 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         await using var channel = await connection.CreateChannelAsync();
         
         await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: true, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        await channel.QueueBindAsync(queue: queueName, exchange: "test", routingKey: "test.event");
         
         // Act
         await bus.PublishDirectAsync(new TestEvent { Data = "test" }, new MessageProperties
@@ -159,13 +171,16 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event")
+        services.AddCloudEventBus(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>())
             .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Binary));
         services.AddTestRabbitMq(rabbitMq.ConnectionString);
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<ICloudEventBus>();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
         var queueName = $"test-queue-{Guid.NewGuid()}";
         var factory = new ConnectionFactory { Uri = new Uri(rabbitMq.ConnectionString) };
@@ -173,7 +188,7 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         await using var channel = await connection.CreateChannelAsync();
         
         await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: true, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        await channel.QueueBindAsync(queue: queueName, exchange: "test", routingKey: "test.event");
         
         // Act
         await bus.PublishDirectAsync(new TestEvent { Data = "binary test" }, new MessageProperties
@@ -204,12 +219,15 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(bus => bus.AddMessage<TestEvent>("test.event"));
+        services.AddCloudEventBus(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
         services.AddTestRabbitMq(rabbitMq.ConnectionString);
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<ICloudEventBus>();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
         var queueName = $"test-queue-{Guid.NewGuid()}";
         var factory = new ConnectionFactory { Uri = new Uri(rabbitMq.ConnectionString) };
@@ -217,7 +235,7 @@ public class RabbitMqIntegrationTests(RabbitMqContainerFixture rabbitMq)
         await using var channel = await connection.CreateChannelAsync();
         
         await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: true, autoDelete: true);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: "test.event");
+        await channel.QueueBindAsync(queue: queueName, exchange: "test", routingKey: "test.event");
         
         // Act - Send multiple messages
         for (int i = 1; i <= 5; i++)

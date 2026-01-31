@@ -10,135 +10,70 @@ namespace CloudEventBus.Tests.Core;
 public class CloudEventBusBuilderTests
 {
     [Test]
-    public void AddHandler_WithRegisteredMessage_RegistersHandlerSuccessfully()
+    public void AddEventConsumeChannel_RegistersChannel()
     {
         // Arrange
         var services = new ServiceCollection();
         var builder = new CloudEventBusBuilder(services);
         
         // Act
-        builder.AddMessage<TestEvent>("test.event");
-        builder.AddHandler<TestEvent, TestEventHandler>();
-        builder.HandlerRegistry.Freeze();
+        builder.AddEventConsumeChannel("test-channel", _ => {});
         
         // Assert
-        var handlers = builder.HandlerRegistry.GetHandlers("test.event");
-        handlers.Should().HaveCount(1);
-        handlers[0].MessageType.Should().Be(typeof(TestEvent));
-        handlers[0].HandlerType.Should().Be(typeof(TestEventHandler));
-        
-        // Verify handler is registered in DI
-        var provider = services.BuildServiceProvider();
-        var handler = provider.CreateScope().ServiceProvider.GetService<TestEventHandler>();
-        handler.Should().NotBeNull();
+        var channel = builder.ChannelRegistry.GetChannel("test-channel");
+        channel.Should().NotBeNull();
+        channel!.Intent.Should().Be(ChannelType.EventConsume);
     }
 
     [Test]
-    public void AddHandler_WithMultipleHandlers_RegistersBothHandlers()
+    public void AddEventPublishChannel_RegistersChannel()
     {
         // Arrange
         var services = new ServiceCollection();
         var builder = new CloudEventBusBuilder(services);
         
         // Act
-        builder.AddMessage<TestEvent>("test.event");
-        builder.AddHandler<TestEvent, TestEventHandler>();
-        builder.AddHandler<TestEvent, SecondTestEventHandler>();
-        builder.HandlerRegistry.Freeze();
+        builder.AddEventPublishChannel("pub-channel", _ => {});
         
         // Assert
-        var handlers = builder.HandlerRegistry.GetHandlers("test.event");
-        handlers.Should().HaveCount(2);
-        handlers[0].HandlerType.Should().Be(typeof(TestEventHandler));
-        handlers[1].HandlerType.Should().Be(typeof(SecondTestEventHandler));
+        var channel = builder.ChannelRegistry.GetChannel("pub-channel");
+        channel.Should().NotBeNull();
+        channel!.Intent.Should().Be(ChannelType.EventPublish);
     }
 
     [Test]
-    public void AddHandler_WithAttributeDecoratedMessage_UsesAttributeEventType()
+    public void Consumes_RegistersMessageInChannel()
     {
         // Arrange
         var services = new ServiceCollection();
         var builder = new CloudEventBusBuilder(services);
         
-        // TestEvent has [CloudEvent("test.event.basic")] attribute
         // Act
-        builder.AddHandler<TestEvent, TestEventHandler>();
-        builder.HandlerRegistry.Freeze();
+        builder.AddEventConsumeChannel("test-channel", c => c.Consumes<TestEvent>());
         
         // Assert
-        var handlers = builder.HandlerRegistry.GetHandlers("test.event.basic");
-        handlers.Should().HaveCount(1);
+        var channel = builder.ChannelRegistry.GetChannel("test-channel");
+        channel.Should().NotBeNull();
+        var msg = channel!.GetMessage(typeof(TestEvent));
+        msg.Should().NotBeNull();
+        msg!.MessageTypeName.Should().Be("test.event");
     }
 
     [Test]
-    public void AddHandler_WithoutRegisteredMessage_ThrowsInvalidOperationException()
+    public void Produces_RegistersMessageInChannel()
     {
         // Arrange
         var services = new ServiceCollection();
         var builder = new CloudEventBusBuilder(services);
         
-        // OrderCreatedEvent has no [CloudEvent] attribute and wasn't registered
         // Act
-        Action act = () => builder.AddHandler<OrderCreatedEvent, OrderCreatedHandler>();
+        builder.AddEventPublishChannel("pub-channel", c => c.Produces<TestEvent>());
         
         // Assert
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*Cannot register handler*");
-    }
-
-    [Test]
-    public void AddMessageWithHandler_RegistersBothMessageAndHandler()
-    {
-        // Arrange
-        var services = new ServiceCollection();
-        var builder = new CloudEventBusBuilder(services);
-        
-        // Act
-        builder.AddMessageWithHandler<OrderCreatedEvent, OrderCreatedHandler>("order.created");
-        builder.TypeRegistry.Freeze();
-        builder.HandlerRegistry.Freeze();
-        
-        // Assert - Message is registered
-        var messageInfo = builder.TypeRegistry.GetByClrType<OrderCreatedEvent>();
-        messageInfo.Should().NotBeNull();
-        messageInfo!.EventType.Should().Be("order.created");
-        
-        // Assert - Handler is registered
-        var handlers = builder.HandlerRegistry.GetHandlers("order.created");
-        handlers.Should().HaveCount(1);
-        handlers[0].HandlerType.Should().Be(typeof(OrderCreatedHandler));
-        
-        // Verify handler is registered in DI
-        var provider = services.BuildServiceProvider();
-        var handler = provider.CreateScope().ServiceProvider.GetService<OrderCreatedHandler>();
-        handler.Should().NotBeNull();
-    }
-
-    [Test]
-    public void AddMessageWithHandler_WithMessageConfiguration_AppliesConfiguration()
-    {
-        // Arrange
-        var services = new ServiceCollection();
-        var builder = new CloudEventBusBuilder(services);
-        
-        // Act
-        builder.AddMessage<OrderCreatedEvent>("order.created", cfg => cfg
-            .WithSource("/orders-service")
-            .WithExtension("version", "v1"));
-        builder.AddHandler<OrderCreatedEvent, OrderCreatedHandler>();
-        builder.TypeRegistry.Freeze();
-        builder.HandlerRegistry.Freeze();
-        
-        // Assert - Message configuration is applied
-        var messageInfo = builder.TypeRegistry.GetByClrType<OrderCreatedEvent>();
-        messageInfo.Should().NotBeNull();
-        messageInfo!.Source.Should().Be("/orders-service");
-        messageInfo.Extensions.Should().ContainKey("version");
-        messageInfo.Extensions["version"].Should().Be("v1");
-        
-        // Assert - Handler is registered
-        var handlers = builder.HandlerRegistry.GetHandlers("order.created");
-        handlers.Should().HaveCount(1);
+        var channel = builder.ChannelRegistry.GetChannel("pub-channel");
+        channel.Should().NotBeNull();
+        var msg = channel!.GetMessage(typeof(TestEvent));
+        msg.Should().NotBeNull();
     }
 
     [Test]
@@ -147,7 +82,6 @@ public class CloudEventBusBuilderTests
         // Arrange
         var services = new ServiceCollection();
         var builder = new CloudEventBusBuilder(services);
-        builder.AddMessage<TestEvent>("test.event");
         
         // Act
         builder.AddHandler<TestEvent, TestEventHandler>();
@@ -164,63 +98,5 @@ public class CloudEventBusBuilderTests
             interfaceHandler.Should().NotBeNull();
             interfaceHandler.Should().BeSameAs(concreteHandler);
         }
-    }
-
-    [Test]
-    public void AddHandler_WithDifferentMessages_RegistersSeparately()
-    {
-        // Arrange
-        var services = new ServiceCollection();
-        var builder = new CloudEventBusBuilder(services);
-        
-        // Act
-        builder.AddMessage<TestEvent>("test.event");
-        builder.AddMessage<OrderCreatedEvent>("order.created");
-        builder.AddHandler<TestEvent, TestEventHandler>();
-        builder.AddHandler<OrderCreatedEvent, OrderCreatedHandler>();
-        builder.HandlerRegistry.Freeze();
-        
-        // Assert - TestEvent handlers
-        var testHandlers = builder.HandlerRegistry.GetHandlers("test.event");
-        testHandlers.Should().HaveCount(1);
-        testHandlers[0].HandlerType.Should().Be(typeof(TestEventHandler));
-        
-        // Assert - OrderCreatedEvent handlers
-        var orderHandlers = builder.HandlerRegistry.GetHandlers("order.created");
-        orderHandlers.Should().HaveCount(1);
-        orderHandlers[0].HandlerType.Should().Be(typeof(OrderCreatedHandler));
-    }
-
-    [Test]
-    public void AddHandler_ReturnsSameBuilder_AllowsChaining()
-    {
-        // Arrange
-        var services = new ServiceCollection();
-        var builder = new CloudEventBusBuilder(services);
-        
-        // Act
-        var result = builder
-            .AddMessage<TestEvent>("test.event")
-            .AddHandler<TestEvent, TestEventHandler>()
-            .AddHandler<TestEvent, SecondTestEventHandler>();
-        
-        // Assert
-        result.Should().BeSameAs(builder);
-    }
-
-    [Test]
-    public void AddMessageWithHandler_ReturnsSameBuilder_AllowsChaining()
-    {
-        // Arrange
-        var services = new ServiceCollection();
-        var builder = new CloudEventBusBuilder(services);
-        
-        // Act
-        var result = builder
-            .AddMessageWithHandler<TestEvent, TestEventHandler>("test.event")
-            .AddMessageWithHandler<OrderCreatedEvent, OrderCreatedHandler>("order.created");
-        
-        // Assert
-        result.Should().BeSameAs(builder);
     }
 }

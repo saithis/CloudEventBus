@@ -93,21 +93,18 @@ public static class TestAssertions
         return sender.SentMessages.Where(m => MatchesType<TMessage>(m, sender.Registry)).ToList();
     }
     
-    private static bool MatchesType<TMessage>(SentMessage message, MessageTypeRegistry? registry)
+    private static bool MatchesType<TMessage>(SentMessage message, ChannelRegistry? registry)
     {
         var type = typeof(TMessage);
         
         // 1. Check registry first if available
-        if (registry != null)
+        var messageRegistration = registry?.FindPublishChannelForMessage(type)?.GetMessage(type);
+        if (messageRegistration != null && 
+            message.Properties.Type?.Equals(messageRegistration.MessageTypeName, StringComparison.OrdinalIgnoreCase) == true)
         {
-            var registryType = registry.ResolveEventType(type);
-            if (!string.IsNullOrEmpty(registryType) && 
-                message.Properties.Type?.Equals(registryType, StringComparison.OrdinalIgnoreCase) == true)
-            {
-                return true;
-            }
+            return true;
         }
-        
+
         // 2. Check for CloudEvent attribute
         var cloudEventAttr = type.GetCustomAttribute<CloudEventAttribute>();
         if (cloudEventAttr != null)
@@ -119,10 +116,7 @@ public static class TestAssertions
             }
         }
         
-        // 3. Try to match by class name (convention)
-        var expectedType = type.Name;
-        
-        // Check if it's a CloudEvents envelope (structured mode)
+        // 3. Check if it's a CloudEvents envelope (structured mode)
         try
         {
             var envelope = JsonSerializer.Deserialize<CloudEventEnvelope>(message.Content);
@@ -133,18 +127,14 @@ public static class TestAssertions
                     return true;
                 
                 // If registry knows the type, check against that too
-                if (registry != null)
+                messageRegistration = registry?.FindPublishChannelForTypeName(envelope.Type)?.GetMessage(envelope.Type);
+                if (messageRegistration != null && 
+                    envelope.Type.Equals(messageRegistration.MessageTypeName, StringComparison.OrdinalIgnoreCase))
                 {
-                    var registryType = registry.ResolveEventType(type);
-                    if (!string.IsNullOrEmpty(registryType) && 
-                        envelope.Type.Equals(registryType, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
                     
-                return envelope.Type.Contains(expectedType, StringComparison.OrdinalIgnoreCase)
-                    || message.Properties.Type?.Contains(expectedType, StringComparison.OrdinalIgnoreCase) == true;
+                return false;
             }
         }
         catch
@@ -152,12 +142,6 @@ public static class TestAssertions
             // Not a CloudEvents envelope, continue with other checks
         }
         
-        // 4. Check message properties for class name match (fallback convention)
-        if (message.Properties.Type?.Contains(expectedType, StringComparison.OrdinalIgnoreCase) == true)
-        {
-            return true;
-        }
-
         // We can't determine if it matches just by looking at content because JSON deserialization 
         // is too permissive (it will deserialize anything into an empty object).
         // If we don't have type information in the envelope or properties, we should assume it doesn't match

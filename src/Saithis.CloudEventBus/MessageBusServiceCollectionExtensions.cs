@@ -1,7 +1,5 @@
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Saithis.CloudEventBus.CloudEvents;
 using Saithis.CloudEventBus.Core;
 using Saithis.CloudEventBus.Serializers.Json;
 using Saithis.CloudEventBus.Testing;
@@ -17,12 +15,6 @@ public static class MessageBusServiceCollectionExtensions
         var builder = new CloudEventBusBuilder(services);
         configure?.Invoke(builder);
         
-        // Freeze registries for optimal performance
-        builder.TypeRegistry.Freeze();
-        builder.HandlerRegistry.Freeze();
-        
-        services.AddSingleton(builder.TypeRegistry);
-        services.AddSingleton(builder.HandlerRegistry);
         services.AddSingleton(builder.CloudEventsOptions);
         
         // Register TimeProvider if not already registered (allows test overrides)
@@ -30,6 +22,9 @@ public static class MessageBusServiceCollectionExtensions
         
         // Register message properties enricher
         services.AddSingleton<IMessagePropertiesEnricher, MessagePropertiesEnricher>();
+        
+        // Register ChannelRegistry
+        services.AddSingleton(builder.ChannelRegistry);
         
         // Register serializer
         services.AddSingleton<IMessageSerializer, JsonMessageSerializer>();

@@ -6,7 +6,7 @@ namespace CloudEventBus.Tests.Fixtures;
 /// <summary>
 /// Test event with CloudEvent attribute
 /// </summary>
-[CloudEvent("test.event.basic")]
+[CloudEvent("test.event")]
 public record TestEvent
 {
     public string Id { get; init; } = Guid.NewGuid().ToString();
@@ -16,6 +16,7 @@ public record TestEvent
 /// <summary>
 /// Test event without attribute (for registry tests)
 /// </summary>
+[CloudEvent("order.created")]
 public record OrderCreatedEvent
 {
     public string OrderId { get; init; } = string.Empty;

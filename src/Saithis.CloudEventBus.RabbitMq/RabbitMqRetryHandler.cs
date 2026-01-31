@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using Saithis.CloudEventBus.Core;
+using Saithis.CloudEventBus.RabbitMq.Config;
 
 namespace Saithis.CloudEventBus.RabbitMq;
 
@@ -11,6 +12,7 @@ namespace Saithis.CloudEventBus.RabbitMq;
 internal class RabbitMqRetryHandler
 {
     private readonly ILogger<RabbitMqRetryHandler> _logger;
+    private const string RetryCountHeader = "x-retry-count";
     
     public RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
     {
@@ -23,7 +25,8 @@ internal class RabbitMqRetryHandler
     public async Task HandleFailureAsync(
         IChannel channel,
         BasicDeliverEventArgs ea,
-        QueueConsumerConfig config,
+        RabbitMqConsumerOptions config, 
+        string queueName,
         DispatchResult result,
         CancellationToken cancellationToken)
     {
@@ -33,19 +36,19 @@ internal class RabbitMqRetryHandler
         if (result == DispatchResult.PermanentError || result == DispatchResult.NoHandlers)
         {
             _logger.LogWarning("Permanent error for message '{MessageId}', sending to DLQ", messageId);
-            await RejectToDlqAsync(channel, ea, config, cancellationToken);
+            await RejectToDlqAsync(channel, ea, config, queueName, cancellationToken);
             return;
         }
         
         // Check retry count
-        var retryCount = RabbitMqQueueTopology.GetRetryCount(ea.BasicProperties.Headers);
+        var retryCount = GetRetryCount(ea.BasicProperties.Headers);
         
         if (retryCount >= config.MaxRetries)
         {
             _logger.LogError(
                 "Message '{MessageId}' exceeded max retries ({MaxRetries}), sending to DLQ",
                 messageId, config.MaxRetries);
-            await RejectToDlqAsync(channel, ea, config, cancellationToken);
+            await RejectToDlqAsync(channel, ea, config, queueName, cancellationToken);
         }
         else
         {
@@ -61,13 +64,14 @@ internal class RabbitMqRetryHandler
     private async Task RejectToDlqAsync(
         IChannel channel,
         BasicDeliverEventArgs ea,
-        QueueConsumerConfig config,
+        RabbitMqConsumerOptions config,
+        string queueName,
         CancellationToken cancellationToken)
     {
         // Need to manually publish to DLQ since we can't conditionally route via DLX
         if (config.UseManagedRetryTopology)
         {
-            var dlqName = $"{config.QueueName}{config.DeadLetterQueueSuffix}";
+            var dlqName = $"{queueName}{config.DeadLetterQueueSuffix}";
             
             // Copy properties and add metadata about failure
             var props = new BasicProperties
@@ -79,7 +83,7 @@ internal class RabbitMqRetryHandler
                 Headers = new Dictionary<string, object?>(ea.BasicProperties.Headers ?? new Dictionary<string, object?>())
             };
             
-            props.Headers["x-original-queue"] = config.QueueName;
+            props.Headers["x-original-queue"] = queueName;
             props.Headers["x-failure-time"] = DateTimeOffset.UtcNow.ToString("O");
             
             // Publish to DLQ
@@ -99,5 +103,41 @@ internal class RabbitMqRetryHandler
             // Just reject without requeue - let DLX handle it
             await channel.BasicNackAsync(ea.DeliveryTag, false, false, cancellationToken);
         }
+    }
+
+    private static int GetRetryCount(IDictionary<string, object?>? headers)
+    {
+        if (headers == null) return 0;
+        
+        // Check explicit header first
+        if (headers.TryGetValue(RetryCountHeader, out var value))
+        {
+            return value switch
+            {
+                int i => i,
+                long l => (int)l,
+                byte[] bytes when bytes.Length == 4 => BitConverter.ToInt32(bytes, 0),
+                _ => 0
+            };
+        }
+        
+        // Fallback to x-death header for DLX loops
+        if (headers.TryGetValue("x-death", out var xDeathObj) && xDeathObj is List<object> xDeathList)
+        {
+            long totalCount = 0;
+            foreach (var entryObj in xDeathList)
+            {
+                if (entryObj is Dictionary<string, object> entry)
+                {
+                    if (entry.TryGetValue("count", out var countObj))
+                    {
+                        totalCount += Convert.ToInt64(countObj);
+                    }
+                }
+            }
+            return (int)totalCount;
+        }
+        
+        return 0;
     }
 }

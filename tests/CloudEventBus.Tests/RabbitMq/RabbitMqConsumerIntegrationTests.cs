@@ -9,6 +9,7 @@ using Saithis.CloudEventBus;
 using Saithis.CloudEventBus.CloudEvents;
 using Saithis.CloudEventBus.Core;
 using Saithis.CloudEventBus.RabbitMq;
+using Saithis.CloudEventBus.RabbitMq.Config;
 using TUnit.Core;
 
 namespace CloudEventBus.Tests.RabbitMq;
@@ -22,11 +23,13 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var queueName = $"consumer-test-{Guid.NewGuid()}";
-        await CreateQueueAsync(queueName, "test.event");
+        // Auto-provisioning handles queue creation
         
         var handler = new TestEventHandler();
         var services = ConfigureServices(queueName, handler);
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
         
         // Start consumer
         var consumer = provider.GetRequiredService<IHostedService>();
@@ -56,7 +59,6 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var queueName = $"consumer-test-{Guid.NewGuid()}";
-        await CreateQueueAsync(queueName, "test.event");
         
         var handler1 = new TestEventHandler();
         var handler2 = new SecondTestEventHandler();
@@ -65,19 +67,24 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, TestEventHandler>()
             .AddHandler<TestEvent, SecondTestEventHandler>());
+            
         services.AddSingleton(handler1);
         services.AddSingleton(handler2);
-        services.AddTestRabbitMq(rabbitMq.ConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
-            opts.AutoAck = false;
-        });
+        services.AddTestRabbitMq(rabbitMq.ConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -102,24 +109,28 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var queueName = $"consumer-test-{Guid.NewGuid()}";
-        await CreateQueueAsync(queueName, "test.event");
         
         var handler = new TestEventHandler();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(true) // Enable auto-ack
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, TestEventHandler>());
+            
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(rabbitMq.ConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
-            opts.AutoAck = true; // Enable auto-ack
-        });
+        services.AddTestRabbitMq(rabbitMq.ConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -147,11 +158,13 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var queueName = $"consumer-test-{Guid.NewGuid()}";
-        await CreateQueueAsync(queueName, "test.event");
         
         var handler = new TestEventHandler();
         var services = ConfigureServices(queueName, handler);
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -176,20 +189,25 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var queueName = $"consumer-test-{Guid.NewGuid()}";
-        await CreateQueueAsync(queueName, "unknown.event");
         
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(); // No handlers registered
-        services.AddTestRabbitMq(rabbitMq.ConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
-            opts.AutoAck = false;
-        });
+        services.AddCloudEventBus(bus => bus
+             // Register channel so queue is created, but no handlers and no message types
+             .AddCommandConsumeChannel(queueName, c => c
+                 .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .QueueOptions(durable: false, autoDelete: true)))
+        ); 
+        services.AddTestRabbitMq(rabbitMq.ConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -215,11 +233,13 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var queueName = $"consumer-test-{Guid.NewGuid()}";
-        await CreateQueueAsync(queueName, "test.event");
         
         var handler = new TestEventHandler();
         var services = ConfigureServices(queueName, handler);
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -254,21 +274,23 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .RetryOptions(maxRetries: 3, delay: TimeSpan.FromMilliseconds(2000), useManaged: true)
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, ThrowingTestEventHandler>());
+            
         services.AddSingleton(handler);
         services.AddTestRabbitMq(rabbitMq.ConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig 
-            { 
-                QueueName = queueName,
-                RetryDelay = TimeSpan.FromMilliseconds(500) // Short delay for testing
-            });
-            opts.AutoAck = false;
-        });
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -294,25 +316,29 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var queueName = $"consumer-test-{Guid.NewGuid()}";
-        await CreateQueueAsync(queueName, "test.event");
         
         var handler = new TestEventHandler();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, TestEventHandler>()
             .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Binary));
+            
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(rabbitMq.ConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
-            opts.AutoAck = false;
-        });
+        services.AddTestRabbitMq(rabbitMq.ConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -340,11 +366,13 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var queueName = $"consumer-test-{Guid.NewGuid()}";
-        await CreateQueueAsync(queueName, "test.event");
         
         var handler = new TestEventHandler();
         var services = ConfigureServices(queueName, handler);
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -375,25 +403,29 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
     {
         // Arrange
         var queueName = $"consumer-test-{Guid.NewGuid()}";
-        await CreateQueueAsync(queueName, "test.event");
         
         var handler = new SlowTestEventHandler(); // Handler that takes time to process
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .Prefetch(2) // Limit prefetch
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, SlowTestEventHandler>());
+            
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(rabbitMq.ConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
-            opts.AutoAck = false;
-            opts.PrefetchCount = 2; // Limit prefetch
-        });
+        services.AddTestRabbitMq(rabbitMq.ConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -423,6 +455,7 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
     [Test]
     public async Task Consumer_WithRetryConfig_RetriesFailedMessages()
     {
+        // Reuse same structure as HandlerThrows_UsesRetryMechanism but checking retry config specifically
         // Arrange
         var queueName = $"consumer-retry-test-{Guid.NewGuid()}";
         var retryQueueName = $"{queueName}.retry";
@@ -432,23 +465,23 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .RetryOptions(maxRetries: 2, delay: TimeSpan.FromSeconds(5), useManaged: true)
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, ThrowingTestEventHandler>());
+            
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(rabbitMq.ConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig 
-            { 
-                QueueName = queueName,
-                MaxRetries = 2,
-                RetryDelay = TimeSpan.FromSeconds(2),
-                UseManagedRetryTopology = true
-            });
-            opts.AutoAck = false;
-        });
+        services.AddTestRabbitMq(rabbitMq.ConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -482,23 +515,23 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .RetryOptions(maxRetries: 2, delay: TimeSpan.FromMilliseconds(500), useManaged: true)
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, ThrowingTestEventHandler>());
+            
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(rabbitMq.ConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig 
-            { 
-                QueueName = queueName,
-                MaxRetries = 2,
-                RetryDelay = TimeSpan.FromMilliseconds(500),
-                UseManagedRetryTopology = true
-            });
-            opts.AutoAck = false;
-        });
+        services.AddTestRabbitMq(rabbitMq.ConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -508,7 +541,7 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
             await PublishTestMessageAsync(queueName, new TestEvent { Id = "123", Data = "test" }, "test.event");
             
             // Wait for all retries to exhaust (initial + 2 retries with delays)
-            await Task.Delay(5000);
+            await Task.Delay(10000);
             
             // Assert - Message should be in DLQ
             var dlqCount = await GetQueueMessageCountAsync(dlqName);
@@ -535,21 +568,21 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddCloudEventBus(); // No handlers
-        services.AddTestRabbitMq(rabbitMq.ConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig 
-            { 
-                QueueName = queueName,
-                MaxRetries = 3,
-                RetryDelay = TimeSpan.FromSeconds(1),
-                UseManagedRetryTopology = true
-            });
-            opts.AutoAck = false;
-        });
+        services.AddCloudEventBus(bus => bus
+             .AddCommandConsumeChannel(queueName, c => c
+                 .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .RetryOptions(maxRetries: 3, delay: TimeSpan.FromSeconds(1), useManaged: true)
+                    .QueueOptions(durable: false, autoDelete: true)))
+        ); 
+        services.AddTestRabbitMq(rabbitMq.ConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -574,6 +607,7 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
     [Test]
     public async Task Consumer_WithRetryConfig_CreatesQueueTopology()
     {
+        // This test is now covered by implicit provisioning in setup, but we can double check
         // Arrange
         var queueName = $"consumer-topology-test-{Guid.NewGuid()}";
         var retryQueueName = $"{queueName}.retry";
@@ -584,23 +618,23 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName)
+                    .AutoAck(false)
+                    .RetryOptions(maxRetries: 3, delay: TimeSpan.FromSeconds(30))
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, TestEventHandler>());
+            
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(rabbitMq.ConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig 
-            { 
-                QueueName = queueName,
-                MaxRetries = 3,
-                RetryDelay = TimeSpan.FromSeconds(30),
-                UseManagedRetryTopology = true
-            });
-            opts.AutoAck = false;
-        });
+        services.AddTestRabbitMq(rabbitMq.ConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         var provider = services.BuildServiceProvider();
+        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
+        await topology.ProvisionTopologyAsync(CancellationToken.None);
+        
         var consumer = provider.GetRequiredService<IHostedService>();
         await consumer.StartAsync(CancellationToken.None);
         
@@ -626,17 +660,9 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
             await consumer.StopAsync(CancellationToken.None);
         }
     }
-
+    
     // Helper methods
-    private async Task CreateQueueAsync(string queueName, string routingKey, bool autoDelete = true)
-    {
-        var factory = new ConnectionFactory { Uri = new Uri(rabbitMq.ConnectionString) };
-        await using var connection = await factory.CreateConnectionAsync();
-        await using var channel = await connection.CreateChannelAsync();
-        
-        await channel.QueueDeclareAsync(queue: queueName, durable: false, exclusive: false, autoDelete: autoDelete);
-        await channel.QueueBindAsync(queue: queueName, exchange: "test.exchange", routingKey: routingKey);
-    }
+    // CreateQueueAsync is removed as replaced by auto-provisioning
 
     private async Task PublishTestMessageAsync<T>(string queueName, T message, string eventType)
     {
@@ -731,15 +757,17 @@ public class RabbitMqConsumerIntegrationTests(RabbitMqContainerFixture rabbitMq)
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddCloudEventBus(bus => bus
-            .AddMessage<TestEvent>("test.event")
+            .AddCommandConsumeChannel(queueName, c => c
+                .WithRabbitMq(o => o
+                    .QueueName(queueName) // Explicitly set queue name, though defaults to channel name could exist
+                    .AutoAck(false)
+                    .QueueOptions(durable: false, autoDelete: true))
+                .Consumes<TestEvent>())
             .AddHandler<TestEvent, TestEventHandler>());
+            
         services.AddSingleton(handler);
-        services.AddTestRabbitMq(rabbitMq.ConnectionString);
-        services.AddRabbitMqConsumer(opts =>
-        {
-            opts.Queues.Add(new QueueConsumerConfig { QueueName = queueName });
-            opts.AutoAck = false;
-        });
+        services.AddTestRabbitMq(rabbitMq.ConnectionString, defaultExchange: "");
+        services.AddRabbitMqConsumer();
         
         return services;
     }

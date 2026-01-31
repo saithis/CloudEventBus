@@ -4,12 +4,14 @@ using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using Saithis.CloudEventBus.Core;
+using Saithis.CloudEventBus.RabbitMq.Config;
 
 namespace Saithis.CloudEventBus.RabbitMq;
 
 internal class RabbitMqConsumer(
     RabbitMqConnectionManager connectionManager,
-    RabbitMqConsumerOptions options,
+    ChannelRegistry registry,
+    RabbitMqTopologyManager topologyManager,
     MessageDispatcher dispatcher,
     IRabbitMqEnvelopeMapper envelopeMapper,
     RabbitMqRetryHandler retryHandler,
@@ -17,6 +19,7 @@ internal class RabbitMqConsumer(
     : BackgroundService
 {
     private readonly List<IChannel> _channels = new();
+    private const string RabbitMqConsumerOptionsKey = "RabbitMqConsumerOptions";
 
     /// <summary>
     /// Gets whether the consumer is healthy (all channels are open).
@@ -27,31 +30,45 @@ internal class RabbitMqConsumer(
     {
         logger.LogInformation("Starting RabbitMQ consumer");
         
-        foreach (var queueConfig in options.Queues)
+        // 1. Provision Topology First
+        logger.LogInformation("Provisioning topology...");
+        await topologyManager.ProvisionTopologyAsync(stoppingToken);
+        
+        // 2. Start Consumers for each Consumer Channel
+        var consumerChannels = registry.GetAllChannels()
+            .Where(c => c.Intent == ChannelType.CommandConsume || c.Intent == ChannelType.EventConsume);
+
+        foreach (var reg in consumerChannels)
         {
+            var options = GetMetadata<RabbitMqConsumerOptions>(reg.Metadata, RabbitMqConsumerOptionsKey) 
+                          ?? new RabbitMqConsumerOptions();
+
+            // Queue name MUST be resolved (provisioning should have ensured it, or we assume it exists)
+            // If it's missing here, we probably failed earlier or it's dynamic.
+            if (string.IsNullOrEmpty(options.QueueName))
+            {
+                logger.LogWarning("Skipping consumer channel '{Channel}' because no queue name is configured.", reg.ChannelName);
+                continue;
+            }
+
             var channel = await connectionManager.CreateChannelAsync(false, stoppingToken);
             await channel.BasicQosAsync(0, options.PrefetchCount, false, stoppingToken);
-            
-            // Declare queue topology with retry infrastructure
-            await RabbitMqQueueTopology.DeclareQueueTopologyAsync(
-                channel,
-                queueConfig,
-                stoppingToken);
             
             var consumer = new AsyncEventingBasicConsumer(channel);
             consumer.ReceivedAsync += async (_, ea) =>
             {
-                await HandleMessageAsync(channel, ea, queueConfig, stoppingToken);
+                await HandleMessageAsync(channel, ea, options, options.QueueName!, reg.ChannelName, stoppingToken);
             };
             
+            logger.LogInformation("Starting consuming from queue '{Queue}' for channel '{Channel}'", options.QueueName, reg.ChannelName);
+            
             await channel.BasicConsumeAsync(
-                queue: queueConfig.QueueName,
+                queue: options.QueueName!,
                 autoAck: options.AutoAck,
                 consumer: consumer,
                 cancellationToken: stoppingToken);
             
             _channels.Add(channel);
-            logger.LogInformation("Started consuming from queue '{Queue}'", queueConfig.QueueName);
         }
         
         // Keep running until cancelled
@@ -61,7 +78,9 @@ internal class RabbitMqConsumer(
     private async Task HandleMessageAsync(
         IChannel channel, 
         BasicDeliverEventArgs ea,
-        QueueConsumerConfig queueConfig,
+        RabbitMqConsumerOptions options,
+        string queueName,
+        string channelName,
         CancellationToken cancellationToken)
     {
         var messageId = ea.BasicProperties.MessageId ?? Guid.NewGuid().ToString();
@@ -70,23 +89,25 @@ internal class RabbitMqConsumer(
         {
             // Use envelope mapper to extract body and properties
             var (body, props) = envelopeMapper.MapIncoming(ea);
-            var result = await dispatcher.DispatchAsync(body, props, cancellationToken);
             
-            if (!options.AutoAck)
+            // Dispatcher handles finding the handler based on type info in props/body
+            // We pass the ChannelName (context) to help resolve the correct message type if ambiguous
+            var result = await dispatcher.DispatchAsync(body, props, cancellationToken, channelName);
+            
+            if (options.AutoAck) return; // Message already acked by broker
+
+            switch (result)
             {
-                switch (result)
-                {
-                    case DispatchResult.Success:
-                        await channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken);
-                        break;
-                    
-                    case DispatchResult.NoHandlers:
-                    case DispatchResult.PermanentError:
-                    case DispatchResult.RecoverableError:
-                        await retryHandler.HandleFailureAsync(
-                            channel, ea, queueConfig, result, cancellationToken);
-                        break;
-                }
+                case DispatchResult.Success:
+                    await channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken);
+                    break;
+                
+                case DispatchResult.NoHandlers:
+                case DispatchResult.PermanentError:
+                case DispatchResult.RecoverableError:
+                    await retryHandler.HandleFailureAsync(
+                        channel, ea, options, queueName, result, cancellationToken);
+                    break;
             }
         }
         catch (Exception ex)
@@ -97,7 +118,7 @@ internal class RabbitMqConsumer(
             {
                 // Treat exception as recoverable error
                 await retryHandler.HandleFailureAsync(
-                    channel, ea, queueConfig, 
+                    channel, ea, options, queueName, 
                     DispatchResult.RecoverableError, cancellationToken);
             }
         }
@@ -114,5 +135,12 @@ internal class RabbitMqConsumer(
         }
         
         await base.StopAsync(cancellationToken);
+    }
+
+    private T? GetMetadata<T>(Dictionary<string, object> metadata, string key) where T : class
+    {
+        if (metadata.TryGetValue(key, out var val) && val is T typedVal)
+            return typedVal;
+        return null;
     }
 }

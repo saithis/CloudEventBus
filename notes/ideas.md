@@ -1,59 +1,96 @@
 ﻿
-# Architecture
-- register channels with name, they are physical transports
-- when sending message, provide the channel name and only save this in the outbox
-- channel can be an exchange, routekey is derived from the message id
-- this might also map well to asyncapi. registered messages are operations then
 
-## Code Structure
+# Config thoughts
 
-https://app.code2flow.com/
+## Declare topology
 
+Extend auto-provisioning to support exchange declaration and queue-to-exchange bindings based on **ownership boundaries**:
+
+- **Publisher (events we own)**: Declare exchanges in `RabbitMqOptions` - others bind to these
+- **Consumer (commands we own)**: Declare exchanges in `RabbitMqConsumerOptions` - others publish to these
+- **Consumer (events from others)**: Bind queues to their exchanges (don't declare them)
+- **Publisher (commands to others)**: Do nothing - they own the exchange
+
+This ensures each service only manages infrastructure it owns, following microservices best practices.
+
+## High level API
+
+
+```csharp
+services.AddCloudEventBus(builder => 
+{
+    builder.WithServiceName("OrderService");
+    
+    // Transport Configuration
+    builder.UseRabbitMq(mq => mq.ConnectionString("amqp://..."));
+
+    // Handlers (Generic)
+    builder.AddHandler<CreateOrderHandler>();
+    builder.AddHandler<UserRegisteredHandler>();
+
+    // ==========================================
+    // 1. PRODUCER: Events we own
+    // (One Exchange, Multiple Messages)==========================================
+    // Intent: We govern "orders.events". We declare it.
+    builder.AddEventPublishChannel("orders.events") // "orders.events" is the logical channel/exchange
+           .WithRabbitMq(cfg => cfg
+               .ExchangeType(ExchangeType.Topic)               
+           )
+           .Produces<OrderCreated>(cfg => cfg.RoutingKey("order.created"))
+           .Produces<OrderCancelled>(); // Uses [CloudEvent] attribute or default
+
+    // ==========================================
+    // 2. SENDER: Commands to others
+    // (External Exchange)==========================================
+    // Intent: We send to "payments.commands". We expect it to exist.
+    builder.AddCommandPublishChannel("payments.commands") // "payments.commands" is the logical channel/exchange
+           .WithRabbitMq(cfg => cfg
+               .ExchangeType(ExchangeType.Topic) // do we even need this? We just need to make sure an echange with this name exists, we don't care about the settings.              
+           )
+           .AddMessage<ProcessPayment>(cfg => cfg.RoutingKey("cmd.pay"));
+
+    // ==========================================
+    // 3. CONSUMER: Commands we own
+    // (Our Exchange -> Our Queue)==========================================
+    // Intent: We own "orders.commands". We declare it and our queue.
+    builder.AddCommandConsumeChannel("orders.commands") // The Logical Channel/sxchange
+           .WithRabbitMq(cfg => cfg
+                .ExchangeType(ExchangeType.Direct)
+                .Queue("orders.process")
+           )
+           .Consumes<CreateOrder>(); // Implicitly binds with routing key derived from type
+
+    // ==========================================
+    // 4. CONSUMER: Events from others
+    // (External Exchange -> Our Queue)==========================================
+    // Intent: We listen to "users.events". We expect it to exist. We declare our queue.
+
+    builder.AddEventConsumeChannel("users.events")
+           .WithRabbitMq(cfg => cfg
+                .Queue("orders.user-handler") // The queue to create/bind
+                .RoutingKey("user.registered") // Default routing key for this block?
+            )
+           .Consumes<UserRegistered>(); 
+});
 ```
-Send Message;
-if(Via Outbox?) {
-  Dbcontext.OutboxMessages.Add();
-  Dbcontext.SaveChangesAsync();
-  OutboxTriggerInterceptor;
-  IMessageSerializer;
-  OutboxMessageEntity.Create();
-  Add to DbContext;
-  OutboxProcessor;
-  Load Messages from DB;
-  Deserialize Properties;
-} else {
-  ICloudEventBus;
-  IMessageSerializer;
-}
-IMessageSender;
-```
 
-## Rabbit independent
+## Message attribute
 
-* [Message("id")] or AddMessage<type>("id")
-   * used to know id for publish
-   * used to find type for receive
+```[CloudEvent("type")]```
 
-## Rabbit specific
+Used to know type for publishand to find type for receive.
 
-* Manually create exchanges, queues and bindings
-  * with rabbitmq client directly
-  * full control
-  * explicit
-* Publish<Message>("exchange", "routeKey") or AddMessage<type>("id").PublishToRabbitMqExchange("exchange", "routeKey")
-  * Builds lookup dict for Sender to know the exchange
-* ListenToRabbitMqQueue("queue", x => x.Add<Message>("id").Add<Message2>("id"))
-  * Adds rabbit queue listener
-  * Registers IMessageHandler<Message>'s
-    * queue listener gets message
-    * finds type by id from Add<Message>() types
-    * finds the handler from type
-    * calls it
+## Other
 
-# AsyncApi
-
-* Get Publish<Message>("exchange", "routeKey") config 
-   * for sending info
-* Get ListenToRabbitMqQueue("queue", x => x.Add<Message>().Add<Message2>()) config 
-   * for receive info
-
+* Backwards compatibility is NOT required, since this library is not in use yet.
+* All config methods above should be in Saithis.CloudEventBus, except for WithRabbitMq and UseRabbitMq and their inner config methods.
+* Combine MessageTypeRegistry and MessageHandlerRegistry into one and refactor the result to hold the information about messages, handlers and channels.
+* The combined registry should have a way for the transport library (Saithis.CloudEventBus.RabbitMq) to register the transport specific information (exchange type, queue name, routing key, etc.). This should be generic, so that a possible future Saithis.CloudEventBus.Kafka can use the same registry.
+* MessagePropertiesEnricher should be kept to enrich the MessageProperties with the information the transport needs.
+* `CloudEventBus.PublishDirectAsync(message)` and `OutboxTriggerInterceptor.SavingChangesAsync` are the only entry points for message sending.
+* Auto-provisioning should be idempotent and failsafe.
+* Validates and creates the topological dependencies on startup and fails early if something is wrong. It checks at least:
+       * Verify "Expected" exchanges exist (for event consume and command send).
+       * Ensure configured message types are unique (can't map same type to two destinations without explicit overrides).
+       * Warn if a message type is mapped for consumption but no handler is registered.
+       * Ensure required RabbitMQ metadata (exchange, routing key) is present for each registration.

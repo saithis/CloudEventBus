@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Saithis.CloudEventBus.CloudEvents;
 using Saithis.CloudEventBus.Core;
 using Saithis.CloudEventBus.RabbitMq;
+using Saithis.CloudEventBus.RabbitMq.Config;
 using TUnit.Core;
 
 namespace CloudEventBus.Tests.RabbitMq;
@@ -80,7 +81,11 @@ internal class TestRabbitMqConsumer : RabbitMqConsumer
     public TestRabbitMqConsumer(bool isHealthy)
         : base(
             new RabbitMqConnectionManager(new RabbitMqOptions { HostName = "localhost" }),
-            new RabbitMqConsumerOptions(),
+            new ChannelRegistry(),
+            new RabbitMqTopologyManager(
+                new ChannelRegistry(),
+                new RabbitMqConnectionManager(new RabbitMqOptions { HostName = "localhost" }),
+                NullLogger<RabbitMqTopologyManager>.Instance),
             CreateMockDispatcher(),
             CreateMockMapper(),
             new RabbitMqRetryHandler(NullLogger<RabbitMqRetryHandler>.Instance),
@@ -94,14 +99,13 @@ internal class TestRabbitMqConsumer : RabbitMqConsumer
     private static MessageDispatcher CreateMockDispatcher()
     {
         // Create minimal dispatcher for testing
-        var handlerRegistry = new MessageHandlerRegistry();
         var deserializer = new Saithis.CloudEventBus.Serializers.Json.JsonMessageSerializer();
         var services = new ServiceCollection();
         var provider = services.BuildServiceProvider();
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
         
         return new MessageDispatcher(
-            handlerRegistry,
+            new ChannelRegistry(),
             deserializer,
             scopeFactory,
             NullLogger<MessageDispatcher>.Instance);
@@ -110,7 +114,6 @@ internal class TestRabbitMqConsumer : RabbitMqConsumer
     private static IRabbitMqEnvelopeMapper CreateMockMapper()
     {
         var options = new CloudEventsOptions();
-        var typeRegistry = new MessageTypeRegistry();
-        return new CloudEventsAmqpMapper(options, TimeProvider.System, typeRegistry);
+        return new CloudEventsAmqpMapper(options, TimeProvider.System);
     }
 }
