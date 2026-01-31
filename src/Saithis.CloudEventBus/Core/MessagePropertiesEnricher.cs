@@ -3,7 +3,8 @@ namespace Saithis.CloudEventBus.Core;
 /// <summary>
 /// Default implementation that enriches MessageProperties with metadata from the MessageTypeRegistry.
 /// </summary>
-public class MessagePropertiesEnricher(MessageTypeRegistry typeRegistry) : IMessagePropertiesEnricher
+public class MessagePropertiesEnricher(MessageTypeRegistry typeRegistry,
+    Configuration.ProductionRegistry productionRegistry) : IMessagePropertiesEnricher
 {
     public MessageProperties Enrich<TMessage>(MessageProperties? properties) where TMessage : notnull
     {
@@ -16,6 +17,20 @@ public class MessagePropertiesEnricher(MessageTypeRegistry typeRegistry) : IMess
         
         // Set Time if not already set
         properties.Time ??= DateTimeOffset.UtcNow;
+        
+        // Resolve destination from registry
+        var registration = productionRegistry.Get(messageType);
+        if (registration != null)
+        {
+            // Pass ChannelName as explicit metadata
+            properties.TransportMetadata["ChannelName"] = registration.ChannelName;
+            
+            foreach (var kvp in registration.Metadata)
+            {
+                properties.TransportMetadata[kvp.Key] = kvp.Value;
+            }
+        }
+        
         
         // Query registry for type info
         var typeInfo = typeRegistry.GetByClrType(messageType);

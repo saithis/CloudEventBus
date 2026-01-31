@@ -37,16 +37,32 @@ public class RabbitMqMessageSender(
     
     private string GetExchange(MessageProperties props)
     {
-        if (props.TransportMetadata.TryGetValue(ExchangeExtensionKey, out var exchange))
+        // 1. Try to get explicit channel name from metadata (populated by CloudEventBus from Registry)
+        if (props.TransportMetadata.TryGetValue("ChannelName", out var channelObj) && channelObj is string channelName)
+            return channelName;
+            
+        // 2. Fallback to legacy string metadata
+        if (props.TransportMetadata.TryGetValue(ExchangeExtensionKey, out var exchangeObj) && exchangeObj is string exchange)
             return exchange;
+            
         return options.DefaultExchange;
     }
     
     private string GetRoutingKey(MessageProperties props)
     {
-        if (props.TransportMetadata.TryGetValue(RoutingKeyExtensionKey, out var routingKey))
+        // 1. Try to get RabbitMQ options from metadata
+        if (props.TransportMetadata.TryGetValue(Configuration.RabbitMqExtensions.RabbitMqMetadataKey, out var metaObj) 
+            && metaObj is Configuration.RabbitMqProductionOptions prodOptions
+            && !string.IsNullOrEmpty(prodOptions.RoutingKey))
+        {
+            return prodOptions.RoutingKey;
+        }
+
+        // 2. Fallback to legacy string metadata
+        if (props.TransportMetadata.TryGetValue(RoutingKeyExtensionKey, out var routingKeyObj) && routingKeyObj is string routingKey)
             return routingKey;
-        // Fall back to message type if available
+            
+        // 3. Fallback to message type if available
         return props.Type ?? "";
     }
     

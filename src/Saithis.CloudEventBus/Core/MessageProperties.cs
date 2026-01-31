@@ -45,7 +45,7 @@ public class MessageProperties
     /// Transport-specific metadata (e.g., RabbitMQ exchange/routing key).
     /// Not included in CloudEvents envelope.
     /// </summary>
-    public Dictionary<string, string> TransportMetadata { get; set; } = new();
+    public Dictionary<string, object> TransportMetadata { get; set; } = new();
     
     /// <summary>
     /// CloudEvents extension attributes (included in envelope).

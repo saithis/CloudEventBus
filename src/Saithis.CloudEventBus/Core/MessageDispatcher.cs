@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -8,11 +10,13 @@ namespace Saithis.CloudEventBus.Core;
 /// Supports multiple handlers per message type.
 /// </summary>
 public class MessageDispatcher(
-    MessageHandlerRegistry handlerRegistry,
+    MessageTypeRegistry typeRegistry,
     IMessageSerializer deserializer,
     IServiceScopeFactory scopeFactory,
     ILogger<MessageDispatcher> logger)
 {
+    private static readonly ConcurrentDictionary<Type, MethodInfo> _dispatchMethods = new();
+
     /// <summary>
     /// Dispatches a message to all registered handlers.
     /// All handlers run in the same DI scope.
@@ -25,15 +29,16 @@ public class MessageDispatcher(
             return DispatchResult.PermanentError;
         }
         
-        var registrations = handlerRegistry.GetHandlers(properties.Type);
-        if (registrations.Count == 0)
+        // Resolve CLR type from the event type string
+        var typeInfo = typeRegistry.GetByEventType(properties.Type);
+        if (typeInfo == null)
         {
-            logger.LogWarning("No handlers registered for event type '{EventType}'", properties.Type);
-            return DispatchResult.NoHandlers;
+             logger.LogWarning("Unknown event type '{EventType}'. No message type mapped.", properties.Type);
+             return DispatchResult.NoHandlers; // Or should we fail? If we don't know the type, we can't deserialize.
         }
         
-        // All handlers share the same message type, so deserialize once
-        var messageType = registrations[0].MessageType;
+        var messageType = typeInfo.ClrType;
+
         object? message;
         try
         {
@@ -41,7 +46,7 @@ public class MessageDispatcher(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to deserialize message of type '{EventType}'", properties.Type);
+            logger.LogError(ex, "Failed to deserialize message of type '{EventType}' (CLR: {ClrType})", properties.Type, messageType.Name);
             return DispatchResult.PermanentError;
         }
         if (message == null)
@@ -50,43 +55,53 @@ public class MessageDispatcher(
             return DispatchResult.PermanentError;
         }
         
+        // Invoke generic dispatch method
+        try 
+        {
+            var method = _dispatchMethods.GetOrAdd(messageType, t => 
+                typeof(MessageDispatcher).GetMethod(nameof(DispatchTypedAsync), BindingFlags.Instance | BindingFlags.NonPublic)!
+                .MakeGenericMethod(t));
+
+            var task = (Task<DispatchResult>)method.Invoke(this, [message, properties, cancellationToken])!;
+            return await task;
+        }
+        catch (Exception ex)
+        {
+             logger.LogError(ex, "Error invoking dispatch for type '{EventType}'", properties.Type);
+             return DispatchResult.RecoverableError;
+        }
+    }
+
+    private async Task<DispatchResult> DispatchTypedAsync<TMessage>(TMessage message, MessageProperties properties, CancellationToken cancellationToken)
+        where TMessage : notnull
+    {
+        using var scope = scopeFactory.CreateScope();
+        var handlers = scope.ServiceProvider.GetServices<IMessageHandler<TMessage>>().ToList();
+
+        if (handlers.Count == 0)
+        {
+            logger.LogWarning("No handlers registered for message type '{ClrType}' (Event: {EventType})", typeof(TMessage).Name, properties.Type);
+            return DispatchResult.NoHandlers;
+        }
+
         var errors = 0;
-        
-        foreach (var registration in registrations)
+
+        foreach (var handler in handlers)
         {
             try
             {
-                using var scope = scopeFactory.CreateScope();
-                
-                // Support multiple handlers of the same interface type by resolving all and matching by concrete type
-                // 1. Try to find the specific handler registration among all instances of the interface
-                var handlers = scope.ServiceProvider.GetServices(registration.HandlerInterfaceType);
-                object? handler = handlers.FirstOrDefault(h => h != null && registration.HandlerType.IsInstanceOfType(h));
-                
-                // 2. Fallback to resolving the concrete type directly from DI
-                handler ??= scope.ServiceProvider.GetService(registration.HandlerType);
-                
-                // 3. Last resort - handle resolution failure with a clear error
-                if (handler == null)
-                {
-                    logger.LogWarning("Could not resolve handler of type '{HandlerType}' via DI", registration.HandlerType.FullName);
-                    return DispatchResult.PermanentError;
-                }
-
-                var handleMethod = registration.HandlerInterfaceType.GetMethod(nameof(IMessageHandler<>.HandleAsync))!;
-                await (Task)handleMethod.Invoke(handler, [message, properties, cancellationToken])!;
-                
-                logger.LogDebug("Handler '{Handler}' processed message '{Id}' of type '{Type}'", 
-                    registration.HandlerType.Name, properties.Id, properties.Type);
+                await handler.HandleAsync(message, properties, cancellationToken);
+                logger.LogDebug("Handler '{Handler}' processed message '{Id}' of type '{EventType}'", 
+                    handler.GetType().Name, properties.Id, properties.Type);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Handler '{Handler}' failed for message '{Id}' of type '{Type}'", 
-                    registration.HandlerType.Name, properties.Id, properties.Type);
+                logger.LogError(ex, "Handler '{Handler}' failed for message '{Id}' of type '{EventType}'", 
+                    handler.GetType().Name, properties.Id, properties.Type);
                 errors++;
             }
         }
-        
+
         return errors > 0 ? DispatchResult.RecoverableError : DispatchResult.Success;
     }
 }

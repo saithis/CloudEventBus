@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Saithis.CloudEventBus.CloudEvents;
 using Saithis.CloudEventBus.Core;
+using Saithis.CloudEventBus.Configuration;
 using Saithis.CloudEventBus.Serializers.Json;
 using Saithis.CloudEventBus.Testing;
 
@@ -23,6 +24,8 @@ public static class MessageBusServiceCollectionExtensions
         
         services.AddSingleton(builder.TypeRegistry);
         services.AddSingleton(builder.HandlerRegistry);
+        services.AddSingleton(builder.ProductionRegistry);
+        services.AddSingleton(builder.ConsumptionRegistry);
         services.AddSingleton(builder.CloudEventsOptions);
         
         // Register TimeProvider if not already registered (allows test overrides)

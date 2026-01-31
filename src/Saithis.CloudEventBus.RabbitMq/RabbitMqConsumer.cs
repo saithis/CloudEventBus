@@ -13,6 +13,7 @@ internal class RabbitMqConsumer(
     MessageDispatcher dispatcher,
     IRabbitMqEnvelopeMapper envelopeMapper,
     RabbitMqRetryHandler retryHandler,
+    Saithis.CloudEventBus.Configuration.ConsumptionRegistry consumptionRegistry,
     ILogger<RabbitMqConsumer> logger)
     : BackgroundService
 {
@@ -26,6 +27,24 @@ internal class RabbitMqConsumer(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("Starting RabbitMQ consumer");
+        
+        // Merge queues from registry
+        foreach (var reg in consumptionRegistry.GetAll())
+        {
+             if (reg.Metadata.TryGetValue(Configuration.RabbitMqExtensions.RabbitMqMetadataKey, out var metadataObj) && 
+                metadataObj is Configuration.RabbitMqConsumptionOptions consOptions)
+            {
+                var queueName = reg.SubscriptionName;
+                if (!options.Queues.Any(q => q.QueueName == queueName))
+                {
+                    options.Queues.Add(new QueueConsumerConfig 
+                    { 
+                        QueueName = queueName,
+                        // Defaults or map from consOptions if we added properties
+                    });
+                }
+            }
+        }
         
         foreach (var queueConfig in options.Queues)
         {

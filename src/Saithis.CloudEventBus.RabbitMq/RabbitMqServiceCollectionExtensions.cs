@@ -38,4 +38,13 @@ public static class RabbitMqServiceCollectionExtensions
         
         return services;
     }
+
+    /// <summary>
+    /// Adds RabbitMQ topology management.
+    /// </summary>
+    public static IServiceCollection AddRabbitMqTopologyManager(this IServiceCollection services)
+    {
+        services.AddHostedService<Infrastructure.RabbitMqTopologyManager>();
+        return services;
+    }
 }
