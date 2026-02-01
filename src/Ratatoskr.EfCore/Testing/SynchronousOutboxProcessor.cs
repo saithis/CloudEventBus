@@ -20,25 +20,16 @@ namespace Ratatoskr.EfCore.Testing;
 /// - No background loop (you control when processing happens via explicit calls)
 /// - No stuck message detection (not needed for synchronous tests)
 /// </summary>
-public class SynchronousOutboxProcessor<TDbContext> where TDbContext : DbContext, IOutboxDbContext
+public class SynchronousOutboxProcessor<TDbContext>(
+    IServiceProvider serviceProvider,
+    IOptions<OutboxOptions> options,
+    TimeProvider timeProvider,
+    ILogger<SynchronousOutboxProcessor<TDbContext>>? logger = null)
+    where TDbContext : DbContext, IOutboxDbContext
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger _logger;
-    private readonly OutboxOptions _options;
-    private readonly TimeProvider _timeProvider;
-    
-    public SynchronousOutboxProcessor(
-        IServiceProvider serviceProvider,
-        IOptions<OutboxOptions> options,
-        TimeProvider timeProvider,
-        ILogger<SynchronousOutboxProcessor<TDbContext>>? logger = null)
-    {
-        _serviceProvider = serviceProvider;
-        _options = options.Value;
-        _timeProvider = timeProvider;
-        _logger = logger ?? (ILogger)NullLogger.Instance;
-    }
-    
+    private readonly ILogger _logger = logger ?? (ILogger)NullLogger.Instance;
+    private readonly OutboxOptions _options = options.Value;
+
     /// <summary>
     /// Processes all pending outbox messages synchronously.
     /// Uses the EXACT SAME OutboxMessageProcessor as production.
@@ -48,13 +39,13 @@ public class SynchronousOutboxProcessor<TDbContext> where TDbContext : DbContext
     {
         var totalProcessed = 0;
         
-        using var scope = _serviceProvider.CreateScope();
+        using var scope = serviceProvider.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<TDbContext>();
         var sender = scope.ServiceProvider.GetRequiredService<IMessageSender>();
         
         // Use the EXACT SAME processor as production
         var processor = new OutboxMessageProcessor<TDbContext>(
-            dbContext, sender, _timeProvider, _options, _logger);
+            dbContext, sender, timeProvider, _options, _logger);
         
         // Keep processing batches until no more messages remain
         while (true)
@@ -78,7 +69,7 @@ public class SynchronousOutboxProcessor<TDbContext> where TDbContext : DbContext
     /// </summary>
     public async Task<int> GetPendingCountAsync(CancellationToken cancellationToken = default)
     {
-        using var scope = _serviceProvider.CreateScope();
+        using var scope = serviceProvider.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<TDbContext>();
         
         return await dbContext.Set<OutboxMessageEntity>()

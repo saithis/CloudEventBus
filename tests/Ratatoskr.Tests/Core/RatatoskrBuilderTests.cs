@@ -20,7 +20,7 @@ public class RatatoskrBuilderTests
         builder.AddEventConsumeChannel("test-channel", _ => {});
         
         // Assert
-        var channel = builder.ChannelRegistry.GetPublishChannel("test-channel");
+        var channel = builder.ChannelRegistry.GetConsumeChannel("test-channel");
         channel.Should().NotBeNull();
         channel!.Intent.Should().Be(ChannelType.EventConsume);
     }
@@ -52,7 +52,7 @@ public class RatatoskrBuilderTests
         builder.AddEventConsumeChannel("test-channel", c => c.Consumes<TestEvent>());
         
         // Assert
-        var channel = builder.ChannelRegistry.GetPublishChannel("test-channel");
+        var channel = builder.ChannelRegistry.GetConsumeChannel("test-channel");
         channel.Should().NotBeNull();
         var msg = channel!.GetMessage(typeof(TestEvent));
         msg.Should().NotBeNull();

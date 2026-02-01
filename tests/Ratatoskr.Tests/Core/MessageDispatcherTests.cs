@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Ratatoskr.Tests.Fixtures;
 using Ratatoskr.Core;
 using Ratatoskr.Serializers.Json;
+using TUnit.Core;
 
 namespace Ratatoskr.Tests.Core;
 

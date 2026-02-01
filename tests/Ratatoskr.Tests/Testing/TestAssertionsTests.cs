@@ -1,9 +1,8 @@
 using System.Text.Json;
 using AwesomeAssertions;
-using Ratatoskr.Tests.Fixtures;
 using Ratatoskr.Core;
 using Ratatoskr.Testing;
-using TUnit.Core;
+using Ratatoskr.Tests.Fixtures;
 
 namespace Ratatoskr.Tests.Testing;
 
@@ -11,11 +10,12 @@ public class TestAssertionsTests
 {
     private InMemoryMessageSender CreateSenderWithRegistry()
     {
-        var registry = new global::Ratatoskr.Core.ChannelRegistry();
+        var registry = new ChannelRegistry();
         registry.Register(new ChannelRegistration("order.created", ChannelType.EventPublish));
         registry.Freeze();
         return new InMemoryMessageSender(registry);
     }
+
     [Test]
     public async Task ShouldHaveSent_WithMatchingMessage_ReturnsMessage()
     {
@@ -23,15 +23,15 @@ public class TestAssertionsTests
         var sender = new InMemoryMessageSender();
         var testEvent = new TestEvent { Id = "123", Data = "test" };
         var serialized = JsonSerializer.SerializeToUtf8Bytes(testEvent);
-        
-        await sender.SendAsync(serialized, new global::Ratatoskr.Core.MessageProperties 
-        { 
-            Type = "test.event" 
+
+        await sender.SendAsync(serialized, new MessageProperties
+        {
+            Type = "test.event"
         }, CancellationToken.None);
-        
+
         // Act
         var result = sender.ShouldHaveSent<TestEvent>();
-        
+
         // Assert
         result.Should().NotBeNull();
         result.Properties.Type.Should().Be("test.event");
@@ -42,21 +42,21 @@ public class TestAssertionsTests
     {
         // Arrange
         var sender = CreateSenderWithRegistry();
-        
+
         var event1 = new OrderCreatedEvent { OrderId = "ORDER-1", Amount = 50 };
         var event2 = new OrderCreatedEvent { OrderId = "ORDER-2", Amount = 100 };
         var event3 = new OrderCreatedEvent { OrderId = "ORDER-3", Amount = 150 };
-        
-        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event1), 
-            new global::Ratatoskr.Core.MessageProperties { Type = "order.created" }, CancellationToken.None);
-        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event2), 
-            new global::Ratatoskr.Core.MessageProperties { Type = "order.created" }, CancellationToken.None);
-        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event3), 
-            new global::Ratatoskr.Core.MessageProperties { Type = "order.created" }, CancellationToken.None);
-        
+
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event1),
+            new MessageProperties { Type = "order.created" }, CancellationToken.None);
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event2),
+            new MessageProperties { Type = "order.created" }, CancellationToken.None);
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event3),
+            new MessageProperties { Type = "order.created" }, CancellationToken.None);
+
         // Act
         var result = sender.ShouldHaveSent<OrderCreatedEvent>(e => e.Amount > 100);
-        
+
         // Assert
         var deserialized = result.Deserialize<OrderCreatedEvent>();
         deserialized.Should().NotBeNull();
@@ -70,10 +70,10 @@ public class TestAssertionsTests
         // Arrange
         var sender = CreateSenderWithRegistry();
         var testEvent = new TestEvent { Data = "test" };
-        
-        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent), 
-            new global::Ratatoskr.Core.MessageProperties { Type = "test.event" }, CancellationToken.None);
-        
+
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent),
+            new MessageProperties { Type = "test.event" }, CancellationToken.None);
+
         // Act & Assert
         Action act = () => sender.ShouldHaveSent<OrderCreatedEvent>();
         act.Should().Throw<AssertionException>()
@@ -86,10 +86,10 @@ public class TestAssertionsTests
         // Arrange
         var sender = CreateSenderWithRegistry();
         var event1 = new OrderCreatedEvent { OrderId = "ORDER-1", Amount = 50 };
-        
-        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event1), 
-            new global::Ratatoskr.Core.MessageProperties { Type = "order.created" }, CancellationToken.None);
-        
+
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event1),
+            new MessageProperties { Type = "order.created" }, CancellationToken.None);
+
         // Act & Assert
         Action act = () => sender.ShouldHaveSent<OrderCreatedEvent>(e => e.Amount > 100);
         act.Should().Throw<AssertionException>()
@@ -102,12 +102,12 @@ public class TestAssertionsTests
         // Arrange
         var sender = new InMemoryMessageSender();
         var testEvent = new TestEvent { Data = "test" };
-        
-        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent), 
-            new global::Ratatoskr.Core.MessageProperties { Type = "test.event" }, CancellationToken.None);
-        
+
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent),
+            new MessageProperties { Type = "test.event" }, CancellationToken.None);
+
         // Act & Assert
-        Action act = () => sender.ShouldNotHaveSent<TestEvent>();
+        var act = () => sender.ShouldNotHaveSent<TestEvent>();
         act.Should().Throw<AssertionException>()
             .WithMessage("*Expected no messages of type TestEvent to be sent*");
     }
@@ -117,7 +117,7 @@ public class TestAssertionsTests
     {
         // Arrange
         var sender = new InMemoryMessageSender();
-        
+
         // Act & Assert - Should not throw
         sender.ShouldNotHaveSent<TestEvent>();
     }
@@ -127,10 +127,10 @@ public class TestAssertionsTests
     {
         // Arrange
         var sender = new InMemoryMessageSender();
-        await sender.SendAsync("msg1"u8.ToArray(), new global::Ratatoskr.Core.MessageProperties(), CancellationToken.None);
-        await sender.SendAsync("msg2"u8.ToArray(), new global::Ratatoskr.Core.MessageProperties(), CancellationToken.None);
-        await sender.SendAsync("msg3"u8.ToArray(), new global::Ratatoskr.Core.MessageProperties(), CancellationToken.None);
-        
+        await sender.SendAsync("msg1"u8.ToArray(), new MessageProperties(), CancellationToken.None);
+        await sender.SendAsync("msg2"u8.ToArray(), new MessageProperties(), CancellationToken.None);
+        await sender.SendAsync("msg3"u8.ToArray(), new MessageProperties(), CancellationToken.None);
+
         // Act & Assert - Should not throw
         sender.ShouldHaveSentCount(3);
     }
@@ -140,10 +140,10 @@ public class TestAssertionsTests
     {
         // Arrange
         var sender = new InMemoryMessageSender();
-        await sender.SendAsync("msg"u8.ToArray(), new global::Ratatoskr.Core.MessageProperties(), CancellationToken.None);
-        
+        await sender.SendAsync("msg"u8.ToArray(), new MessageProperties(), CancellationToken.None);
+
         // Act & Assert
-        Action act = () => sender.ShouldHaveSentCount(3);
+        var act = () => sender.ShouldHaveSentCount(3);
         act.Should().Throw<AssertionException>()
             .WithMessage("*Expected 3 message(s) to be sent, but found 1*");
     }
@@ -153,10 +153,10 @@ public class TestAssertionsTests
     {
         // Arrange
         var sender = new InMemoryMessageSender();
-        await sender.SendAsync("msg"u8.ToArray(), new global::Ratatoskr.Core.MessageProperties(), CancellationToken.None);
-        
+        await sender.SendAsync("msg"u8.ToArray(), new MessageProperties(), CancellationToken.None);
+
         // Act & Assert
-        Action act = () => sender.ShouldNotHaveSentAny();
+        var act = () => sender.ShouldNotHaveSentAny();
         act.Should().Throw<AssertionException>();
     }
 
@@ -165,7 +165,7 @@ public class TestAssertionsTests
     {
         // Arrange
         var sender = new InMemoryMessageSender();
-        
+
         // Act & Assert - Should not throw
         sender.ShouldNotHaveSentAny();
     }
@@ -175,20 +175,20 @@ public class TestAssertionsTests
     {
         // Arrange - Create dedicated sender for this test
         var sender = CreateSenderWithRegistry();
-        
+
         var testEvent = new TestEvent { Data = "test" };
         var orderEvent = new OrderCreatedEvent { OrderId = "ORDER-1" };
-        
-        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent), 
-            new global::Ratatoskr.Core.MessageProperties { Type = "test.event" }, CancellationToken.None);
-        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(orderEvent), 
-            new global::Ratatoskr.Core.MessageProperties { Type = "order.created" }, CancellationToken.None);
-        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent), 
-            new global::Ratatoskr.Core.MessageProperties { Type = "test.event" }, CancellationToken.None);
-        
+
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent),
+            new MessageProperties { Type = "test.event" }, CancellationToken.None);
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(orderEvent),
+            new MessageProperties { Type = "order.created" }, CancellationToken.None);
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent),
+            new MessageProperties { Type = "test.event" }, CancellationToken.None);
+
         // Act
         var testMessages = sender.GetSentMessages<TestEvent>();
-        
+
         // Assert
         testMessages.Should().HaveCount(2);
     }
@@ -198,15 +198,15 @@ public class TestAssertionsTests
     {
         // Arrange - Create dedicated sender for this test
         var sender = new InMemoryMessageSender();
-        
-        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new TestEvent { Data = "first" }), 
-            new global::Ratatoskr.Core.MessageProperties { Type = "test.event" }, CancellationToken.None);
-        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new TestEvent { Data = "second" }), 
-            new global::Ratatoskr.Core.MessageProperties { Type = "test.event" }, CancellationToken.None);
-        
+
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new TestEvent { Data = "first" }),
+            new MessageProperties { Type = "test.event" }, CancellationToken.None);
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new TestEvent { Data = "second" }),
+            new MessageProperties { Type = "test.event" }, CancellationToken.None);
+
         // Act
         var result = sender.ShouldHaveSent<TestEvent>();
-        
+
         // Assert - ConcurrentBag doesn't preserve order, just verify we get a match
         var deserialized = result.Deserialize<TestEvent>();
         deserialized!.Data.Should().BeOneOf("first", "second");
@@ -218,11 +218,11 @@ public class TestAssertionsTests
         // Arrange
         var sender = new InMemoryMessageSender();
         var testEvent = new TestEvent { Data = "test" };
-        
+
         // Send with CloudEvents type that contains the class name
-        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent), 
-            new global::Ratatoskr.Core.MessageProperties { Type = "test.event" }, CancellationToken.None);
-        
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(testEvent),
+            new MessageProperties { Type = "test.event" }, CancellationToken.None);
+
         // Act & Assert - Should match even with different type format
         var result = sender.ShouldHaveSent<TestEvent>();
         result.Should().NotBeNull();

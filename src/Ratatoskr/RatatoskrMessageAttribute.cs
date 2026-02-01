@@ -11,11 +11,6 @@ public class RatatoskrMessageAttribute : Attribute
     /// </summary>
     public string Type { get; }
     
-    /// <summary>
-    /// Optional source URI for this event type.
-    /// </summary>
-    public string? Source { get; set; }
-    
     public RatatoskrMessageAttribute(string type)
     {
         if (string.IsNullOrWhiteSpace(type))

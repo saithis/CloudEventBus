@@ -17,8 +17,7 @@ public class RabbitMqContainerFixture : IAsyncInitializer, IAsyncDisposable
 
     public async Task InitializeAsync()
     {
-        _container = new RabbitMqBuilder()
-            .WithImage("rabbitmq:4.0-alpine")
+        _container = new RabbitMqBuilder("rabbitmq:4.0-alpine")
             .Build();
             
         await _container.StartAsync();

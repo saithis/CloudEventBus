@@ -1,4 +1,4 @@
-# AI Agent Instructions for CloudEventBus Tests
+# AI Agent Instructions for Ratatoskr Tests
 
 ## Testing Framework
 

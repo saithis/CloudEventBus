@@ -16,8 +16,7 @@ public class PostgresContainerFixture : IAsyncInitializer, IAsyncDisposable
 
     public async Task InitializeAsync()
     {
-        _container = new PostgreSqlBuilder()
-            .WithImage("postgres:17-alpine")
+        _container = new PostgreSqlBuilder("postgres:17-alpine")
             .WithDatabase("testdb")
             .WithUsername("testuser")
             .WithPassword("testpass")

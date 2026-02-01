@@ -9,18 +9,20 @@ public static class RabbitMqMessagePropertiesExtensions
 
     extension(MessageProperties props)
     {
-        public void SetExchange(string exchange)
+        public MessageProperties SetExchange(string exchange)
         {
             props.TransportMetadata[ExchangeExtensionKey] = exchange;
+            return props;
         }
 
-        public string GetExchange() => props.TransportMetadata[ExchangeExtensionKey];
+        public string? GetExchange() => props.TransportMetadata.GetValueOrDefault(ExchangeExtensionKey);
         
-        public void SetRoutingKey(string routingKey)
+        public MessageProperties SetRoutingKey(string routingKey)
         {
             props.TransportMetadata[RoutingKeyExtensionKey] = routingKey;
+            return props;
         }
         
-        public string GetRoutingKey() => props.TransportMetadata[RoutingKeyExtensionKey];
+        public string? GetRoutingKey() => props.TransportMetadata.GetValueOrDefault(RoutingKeyExtensionKey);
     }
 }

@@ -24,7 +24,7 @@ public class RabbitMqMessageSender(
         // BasicPublishAsync returns a ValueTask that completes when the message is confirmed
         await channel.BasicPublishAsync(
             exchange: props.GetExchange(),
-            routingKey: props.GetRoutingKey(),
+            routingKey: props.GetRoutingKey() ?? props.Type,
             mandatory: false,
             basicProperties: basicProps,
             body: bodyToSend,

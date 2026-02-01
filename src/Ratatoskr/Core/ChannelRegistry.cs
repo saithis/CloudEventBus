@@ -68,7 +68,7 @@ public class ChannelRegistry
     // Helper to find consumer channels for a wire type name
     public IEnumerable<(ChannelRegistration Channel, MessageRegistration Message)> FindConsumeChannelsForType(string typeName)
     {
-        foreach (var channel in _publishChannels.Values)
+        foreach (var channel in _consumeChannels.Values)
         {
              if (channel.Intent != ChannelType.EventConsume && channel.Intent != ChannelType.CommandConsume)
                  continue;

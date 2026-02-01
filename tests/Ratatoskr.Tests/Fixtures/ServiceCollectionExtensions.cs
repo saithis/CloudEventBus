@@ -3,7 +3,9 @@ using Medallion.Threading.FileSystem;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using Ratatoskr.RabbitMq;
 using Ratatoskr;
 using Ratatoskr.Core;
 using Ratatoskr.EfCore;
@@ -28,6 +30,10 @@ public static class ServiceCollectionExtensions
     {
         services.AddRatatoskr(configure);
         services.AddInMemoryMessageSender();
+        
+        // Register RabbitMq transport enricher if not already registered
+        services.TryAddSingleton<ITransportMessageMetadataEnricher, RabbitMqMessageMetadataEnricher>();
+        
         return services;
     }
 
@@ -60,13 +66,6 @@ public static class ServiceCollectionExtensions
         string connectionString,
         string? defaultExchange = "test")
     {
-        services.AddRabbitMqMessageSender(
-            options =>
-            {
-                options.ConnectionString = connectionString;
-                options.DefaultExchange = defaultExchange;
-                options.UsePublisherConfirms = true;
-            });
         return services;
     }
 

@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Ratatoskr.Tests.Fixtures;
 using Ratatoskr;
+using Ratatoskr.RabbitMq.Extensions;
 using Ratatoskr.Testing;
 using TUnit.Core;
 
@@ -91,8 +92,7 @@ public class RatatoskrTests
         var services = new ServiceCollection();
         services.AddTestCloudEventBus(bus => bus
             .AddEventPublishChannel("test", c => c.Produces<TestEvent>(m => m
-                .WithMetadata("tenant", "test-tenant")
-                .WithMetadata("version", "v1"))));
+                .WithRoutingKey("routeKey"))));
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<IRatatoskr>();
@@ -104,10 +104,8 @@ public class RatatoskrTests
         // Assert
         sender.SentMessages.Should().HaveCount(1);
         var message = sender.SentMessages.First();
-        message.Properties.TransportMetadata.Should().ContainKey("tenant");
-        message.Properties.TransportMetadata["tenant"].Should().Be("test-tenant");
-        message.Properties.TransportMetadata.Should().ContainKey("version");
-        message.Properties.TransportMetadata["version"].Should().Be("v1");
+        message.Properties.TransportMetadata.Should().ContainKey("rabbitmq.routingKey");
+        message.Properties.TransportMetadata["rabbitmq.routingKey"].Should().Be("routeKey");
     }
 
     [Test]

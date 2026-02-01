@@ -1,4 +1,3 @@
-using Ratatoskr;
 using Ratatoskr.Core;
 
 namespace Ratatoskr.Tests.Fixtures;
@@ -22,16 +21,6 @@ public record OrderCreatedEvent
     public string OrderId { get; init; } = string.Empty;
     public decimal Amount { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
-}
-
-/// <summary>
-/// Test event with custom source
-/// </summary>
-[RatatoskrMessage("customer.updated", Source = "/test-service")]
-public record CustomerUpdatedEvent
-{
-    public string CustomerId { get; init; } = string.Empty;
-    public string Name { get; init; } = string.Empty;
 }
 
 /// <summary>
@@ -67,17 +56,6 @@ public class SecondTestEventHandler : IMessageHandler<TestEvent>
     }
 }
 
-public class OrderCreatedHandler : IMessageHandler<OrderCreatedEvent>
-{
-    public List<OrderCreatedEvent> HandledMessages { get; } = new();
-    
-    public Task HandleAsync(OrderCreatedEvent message, MessageProperties context, CancellationToken cancellationToken)
-    {
-        HandledMessages.Add(message);
-        return Task.CompletedTask;
-    }
-}
-
 public class ThrowingTestEventHandler : IMessageHandler<TestEvent>
 {
     public Task HandleAsync(TestEvent message, MessageProperties context, CancellationToken cancellationToken)
@@ -86,15 +64,3 @@ public class ThrowingTestEventHandler : IMessageHandler<TestEvent>
     }
 }
 
-public class SlowTestEventHandler : IMessageHandler<TestEvent>
-{
-    private int _processingCount;
-    
-    public int ProcessingCount => _processingCount;
-    
-    public async Task HandleAsync(TestEvent message, MessageProperties context, CancellationToken cancellationToken)
-    {
-        Interlocked.Increment(ref _processingCount);
-        await Task.Delay(500, cancellationToken); // Simulate slow processing
-    }
-}

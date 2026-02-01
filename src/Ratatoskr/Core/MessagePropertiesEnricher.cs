@@ -22,8 +22,20 @@ public class MessagePropertiesEnricher(ChannelRegistry registry, CloudEventsOpti
         
         // Query registry for type info
         var publishInfo = registry.GetPublishInformation(messageType);
-        if (publishInfo == null) 
+        
+        if (publishInfo == null)
+        {
+            // If not in registry, try to deduce type from attribute
+            if (string.IsNullOrEmpty(properties.Type))
+            {
+                var attr = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<RatatoskrMessageAttribute>(messageType);
+                if (attr != null)
+                {
+                    properties.Type = attr.Type;
+                }
+            }
             return properties;
+        }
         
         // Enrich Type if not already set
         if (string.IsNullOrEmpty(properties.Type))

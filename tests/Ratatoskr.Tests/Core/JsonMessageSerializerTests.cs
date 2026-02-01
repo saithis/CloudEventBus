@@ -4,6 +4,7 @@ using AwesomeAssertions;
 using Ratatoskr.Tests.Fixtures;
 using Ratatoskr.Core;
 using Ratatoskr.Serializers.Json;
+using TUnit.Core;
 
 namespace Ratatoskr.Tests.Core;
 
