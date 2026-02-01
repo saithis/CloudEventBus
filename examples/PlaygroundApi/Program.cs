@@ -32,6 +32,9 @@ builder.Services.AddCloudEventBus(bus =>
             c.ConnectionString = rabbitMqConnectionString;
             c.DefaultExchange = "events.topic"; // Use topic exchange for event routing
         });
+    
+    bus.AddEfCoreOutbox<NotesDbContext>();
+    
     bus.AddHandler<NoteAddedEvent, NoteAddedEventHandler>();
     bus.AddHandler<NoteDto, NoteDtoHandler>();
     bus.AddHandler<FailEvent, FailEventHandler>();
@@ -54,8 +57,6 @@ builder.Services.AddCloudEventBus(bus =>
     
     // TODO: test the other channel types
 });
-
-builder.Services.AddOutboxPattern<NotesDbContext>();
 
 // Use PostgreSQL when connection string is available (Aspire), otherwise use InMemory
 var dbConnectionString = builder.Configuration.GetConnectionString("notesdb");

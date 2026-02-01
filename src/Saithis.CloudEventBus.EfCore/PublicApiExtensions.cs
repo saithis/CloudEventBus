@@ -13,51 +13,50 @@ namespace Saithis.CloudEventBus.EfCore;
 /// </summary>
 public static class PublicApiExtensions
 {
-    /// <summary>
-    /// Registers the outbox pattern with default options.
-    /// </summary>
-    public static IServiceCollection AddOutboxPattern<TDbContext>(this IServiceCollection services)
-        where TDbContext : DbContext, IOutboxDbContext
+    extension(CloudEventBusBuilder builder)
     {
-        return services.AddOutboxPattern<TDbContext>(configure: null);
+        /// <summary>
+        /// Registers the outbox pattern with default options.
+        /// </summary>
+        public CloudEventBusBuilder AddEfCoreOutbox<TDbContext>()
+            where TDbContext : DbContext, IOutboxDbContext
+        {
+            return builder.AddEfCoreOutbox<TDbContext>(configure: null);
+        }
+
+        /// <summary>
+        /// Registers the outbox pattern with custom options via builder.
+        /// </summary>
+        public CloudEventBusBuilder AddEfCoreOutbox<TDbContext>(Action<OutboxBuilder<TDbContext>>? configure)
+            where TDbContext : DbContext, IOutboxDbContext
+        {
+            var outboxBuilder = new OutboxBuilder<TDbContext>(builder.Services);
+            configure?.Invoke(outboxBuilder);
+        
+            // Register options
+            builder.Services.AddSingleton(Options.Create(outboxBuilder.Options));
+        
+            builder.Services.AddSingleton<OutboxProcessor<TDbContext>>();
+            builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<OutboxProcessor<TDbContext>>());
+        
+            return builder;
+        }
+
+        /// <summary>
+        /// Registers the outbox pattern with options from configuration.
+        /// </summary>
+        public CloudEventBusBuilder AddEfCoreOutbox<TDbContext>(IConfiguration configuration)
+            where TDbContext : DbContext, IOutboxDbContext
+        {
+            builder.Services.Configure<OutboxOptions>(configuration.GetSection(OutboxOptions.SectionName));
+        
+            builder.Services.AddSingleton<OutboxProcessor<TDbContext>>();
+            builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<OutboxProcessor<TDbContext>>());
+        
+            return builder;
+        }
     }
-    
-    /// <summary>
-    /// Registers the outbox pattern with custom options via builder.
-    /// </summary>
-    public static IServiceCollection AddOutboxPattern<TDbContext>(
-        this IServiceCollection services,
-        Action<OutboxBuilder<TDbContext>>? configure)
-        where TDbContext : DbContext, IOutboxDbContext
-    {
-        var builder = new OutboxBuilder<TDbContext>(services);
-        configure?.Invoke(builder);
-        
-        // Register options
-        services.AddSingleton(Options.Create(builder.Options));
-        
-        services.AddSingleton<OutboxProcessor<TDbContext>>();
-        services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<OutboxProcessor<TDbContext>>());
-        
-        return services;
-    }
-    
-    /// <summary>
-    /// Registers the outbox pattern with options from configuration.
-    /// </summary>
-    public static IServiceCollection AddOutboxPattern<TDbContext>(
-        this IServiceCollection services,
-        IConfiguration configuration)
-        where TDbContext : DbContext, IOutboxDbContext
-    {
-        services.Configure<OutboxOptions>(configuration.GetSection(OutboxOptions.SectionName));
-        
-        services.AddSingleton<OutboxProcessor<TDbContext>>();
-        services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<OutboxProcessor<TDbContext>>());
-        
-        return services;
-    }
-    
+
     /// <summary>
     /// Registers the DbContext interceptor that is responsible for converting the messages to ef core entities for saving and triggering the outbox processor afterward for faster dispatch to the broker.
     /// </summary>
