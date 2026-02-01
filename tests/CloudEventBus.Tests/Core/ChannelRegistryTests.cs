@@ -24,7 +24,7 @@ public class ChannelRegistryTests
         );
 
         // Assert
-        var channel = builder.ChannelRegistry.GetChannel("local.events");
+        var channel = builder.ChannelRegistry.GetPublishChannel("local.events");
         channel.Should().NotBeNull();
         channel!.Intent.Should().Be(ChannelType.EventPublish);
         channel.Messages.Should().HaveCount(1);

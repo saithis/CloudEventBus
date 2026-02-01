@@ -19,7 +19,6 @@ internal class RabbitMqConsumer(
     : BackgroundService
 {
     private readonly List<IChannel> _channels = new();
-    private const string RabbitMqConsumerOptionsKey = "RabbitMqConsumerOptions";
 
     /// <summary>
     /// Gets whether the consumer is healthy (all channels are open).
@@ -35,13 +34,11 @@ internal class RabbitMqConsumer(
         await topologyManager.ProvisionTopologyAsync(stoppingToken);
         
         // 2. Start Consumers for each Consumer Channel
-        var consumerChannels = registry.GetAllChannels()
-            .Where(c => c.Intent == ChannelType.CommandConsume || c.Intent == ChannelType.EventConsume);
+        var consumerChannels = registry.GetConsumeChannels();
 
         foreach (var reg in consumerChannels)
         {
-            var options = GetMetadata<RabbitMqConsumerOptions>(reg.Metadata, RabbitMqConsumerOptionsKey) 
-                          ?? new RabbitMqConsumerOptions();
+            var options = reg.GetRabbitMqConsumerOptions() ?? new RabbitMqConsumerOptions();
 
             // Queue name MUST be resolved (provisioning should have ensured it, or we assume it exists)
             // If it's missing here, we probably failed earlier or it's dynamic.
@@ -135,12 +132,5 @@ internal class RabbitMqConsumer(
         }
         
         await base.StopAsync(cancellationToken);
-    }
-
-    private T? GetMetadata<T>(Dictionary<string, object> metadata, string key) where T : class
-    {
-        if (metadata.TryGetValue(key, out var val) && val is T typedVal)
-            return typedVal;
-        return null;
     }
 }

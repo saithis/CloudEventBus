@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -9,16 +10,10 @@ namespace Saithis.CloudEventBus.RabbitMq;
 /// <summary>
 /// Handles retry logic for failed messages.
 /// </summary>
-internal class RabbitMqRetryHandler
+internal class RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
 {
-    private readonly ILogger<RabbitMqRetryHandler> _logger;
     private const string RetryCountHeader = "x-retry-count";
-    
-    public RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
-    {
-        _logger = logger;
-    }
-    
+
     /// <summary>
     /// Determines how to handle a failed message based on retry configuration.
     /// </summary>
@@ -35,7 +30,7 @@ internal class RabbitMqRetryHandler
         // Permanent errors go straight to DLQ
         if (result == DispatchResult.PermanentError || result == DispatchResult.NoHandlers)
         {
-            _logger.LogWarning("Permanent error for message '{MessageId}', sending to DLQ", messageId);
+            logger.LogWarning("Permanent error for message '{MessageId}', sending to DLQ", messageId);
             await RejectToDlqAsync(channel, ea, config, queueName, cancellationToken);
             return;
         }
@@ -45,14 +40,14 @@ internal class RabbitMqRetryHandler
         
         if (retryCount >= config.MaxRetries)
         {
-            _logger.LogError(
+            logger.LogError(
                 "Message '{MessageId}' exceeded max retries ({MaxRetries}), sending to DLQ",
                 messageId, config.MaxRetries);
             await RejectToDlqAsync(channel, ea, config, queueName, cancellationToken);
         }
         else
         {
-            _logger.LogInformation(
+            logger.LogInformation(
                 "Message '{MessageId}' will be retried (attempt {RetryCount}/{MaxRetries})",
                 messageId, retryCount + 1, config.MaxRetries);
             
@@ -122,16 +117,21 @@ internal class RabbitMqRetryHandler
         }
         
         // Fallback to x-death header for DLX loops
-        if (headers.TryGetValue("x-death", out var xDeathObj) && xDeathObj is List<object> xDeathList)
+        if (headers.TryGetValue("x-death", out var xDeathObj) && xDeathObj is System.Collections.IEnumerable xDeathList)
         {
             long totalCount = 0;
             foreach (var entryObj in xDeathList)
             {
-                if (entryObj is Dictionary<string, object> entry)
+                if (entryObj is IDictionary<string, object> entry)
                 {
-                    if (entry.TryGetValue("count", out var countObj))
+                    if (entry.TryGetValue("count", out var countObj) && 
+                        entry.TryGetValue("reason", out var reasonObj))
                     {
-                        totalCount += Convert.ToInt64(countObj);
+                        var reason = GetString(reasonObj);
+                        if (reason == "rejected")
+                        {
+                            totalCount += Convert.ToInt64(countObj);
+                        }
                     }
                 }
             }
@@ -139,5 +139,16 @@ internal class RabbitMqRetryHandler
         }
         
         return 0;
+    }
+
+    private static string GetString(object? value)
+    {
+        return value switch
+        {
+            null => "",
+            string str => str,
+            byte[] bytes => Encoding.UTF8.GetString(bytes),
+            _ => value.ToString() ?? ""
+        };
     }
 }

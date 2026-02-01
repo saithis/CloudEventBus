@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Medallion.Threading;
 using Medallion.Threading.FileSystem;
 using Microsoft.AspNetCore.Mvc;
@@ -20,43 +21,51 @@ var lockFileDirectory = new DirectoryInfo(Environment.CurrentDirectory); // choo
 builder.Services.AddSingleton<IDistributedLockProvider>(_ => new FileDistributedSynchronizationProvider(lockFileDirectory));
 
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+
+
+var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmq");
 builder.Services.AddCloudEventBus(bus =>
 {
+    bus
+        .UseRabbitMq(c =>
+        {
+            c.ConnectionString = rabbitMqConnectionString;
+            c.DefaultExchange = "events.topic"; // Use topic exchange for event routing
+        });
+    bus.AddHandler<NoteAddedEvent, NoteAddedEventHandler>();
+    bus.AddHandler<NoteDto, NoteDtoHandler>();
+    bus.AddHandler<FailEvent, FailEventHandler>();
+    
     bus
         .AddEventPublishChannel("events.topic", c => c
             .WithRabbitMq(r =>
             {
                 r.ExchangeTypeTopic();
             })
-            .Produces<NoteAddedEvent>());
+            .Produces<NoteAddedEvent>()
+            .Produces<NoteDto>(m => m.WithType("notes"))
+            .Produces<FailEvent>());
+    
+    bus.AddEventConsumeChannel("events.topic", c =>
+        c.WithRabbitMqConsumer(r => r.WithQueueName("events.subscriptions")) //TODO: require queue name in consumer
+            .Consumes<NoteDto>(m => m.WithType("notes"))
+            .Consumes<NoteAddedEvent>()
+            .Consumes<FailEvent>());
+    
+    // TODO: test the other channel types
 });
-
-// Use RabbitMQ when connection string is available (Aspire), otherwise use Console for testing
-var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmq");
-if (!string.IsNullOrEmpty(rabbitMqConnectionString))
-{
-    builder.Services.AddRabbitMqMessageSender(options =>
-    {
-        options.ConnectionString = rabbitMqConnectionString;
-        options.DefaultExchange = "events.topic"; // Use topic exchange for event routing
-    });
-}
-else
-{
-    builder.Services.AddConsoleMessageSender(); // For testing/development
-}
 
 builder.Services.AddOutboxPattern<NotesDbContext>();
 
 // Use PostgreSQL when connection string is available (Aspire), otherwise use InMemory
-var connectionString = builder.Configuration.GetConnectionString("notesdb");
-if (!string.IsNullOrEmpty(connectionString))
+var dbConnectionString = builder.Configuration.GetConnectionString("notesdb");
+if (!string.IsNullOrEmpty(dbConnectionString))
 {
     // Use AddDbContext directly to get access to IServiceProvider for interceptor registration
     // This bypasses Aspire's AddNpgsqlDbContext but still uses the connection string from Aspire
     builder.Services.AddDbContext<NotesDbContext>((sp, options) =>
     {
-        options.UseNpgsql(connectionString);
+        options.UseNpgsql(dbConnectionString);
         options.RegisterOutbox<NotesDbContext>(sp);
     });
 }
@@ -72,14 +81,7 @@ var app = builder.Build();
 // Map default endpoints for Aspire
 app.MapDefaultEndpoints();
 
-// Ensure RabbitMQ topic exchange exists if using RabbitMQ
-if (!string.IsNullOrEmpty(rabbitMqConnectionString))
-{
-    await EnsureRabbitMqExchangeAsync(rabbitMqConnectionString);
-}
-
 // Apply migrations if using PostgreSQL
-var dbConnectionString = app.Configuration.GetConnectionString("notesdb");
 if (!string.IsNullOrEmpty(dbConnectionString))
 {
     using var scope = app.Services.CreateScope();
@@ -89,19 +91,18 @@ if (!string.IsNullOrEmpty(dbConnectionString))
 
 app.MapGet("/", () => "Hello World!");
 
+// Fail consumption test
+app.MapPost("/fail", async ([FromBody] FailEvent dto, [FromServices] ICloudEventBus bus) =>
+{
+    await bus.PublishDirectAsync(dto);
+    return TypedResults.Ok(dto);
+});
+
 // Direct publishing example - no transaction
 app.MapPost("/send", async ([FromBody] NoteDto dto, [FromServices] ICloudEventBus bus) =>
 {
     // PublishDirectAsync - sends immediately, no outbox
-    await bus.PublishDirectAsync(dto, new MessageProperties
-    {
-        Type = "com.example.notes.test",
-        Source = "/playground-api",
-        TransportMetadata =
-        {
-            [RabbitMqMessageSender.RoutingKeyExtensionKey] = "notes.test"
-        }
-    });
+    await bus.PublishDirectAsync(dto);
     return TypedResults.Ok(dto);
 });
 
@@ -120,12 +121,6 @@ app.MapPost("/notes", async ([FromBody] NoteDto dto, [FromServices] NotesDbConte
     {
         Id = note.Id,
         Text = $"New Note: {dto.Text}",
-    }, new MessageProperties
-    {
-        TransportMetadata =
-        {
-            [RabbitMqMessageSender.RoutingKeyExtensionKey] = "notes.added"
-        }
     });
     
     await db.SaveChangesAsync(); // Note saved AND event queued atomically
@@ -139,18 +134,30 @@ app.MapGet("/notes", async ([FromServices] NotesDbContext db) =>
 
 app.Run();
 
-static async Task EnsureRabbitMqExchangeAsync(string connectionString)
-{
-    using var connection = await new RabbitMQ.Client.ConnectionFactory { Uri = new Uri(connectionString) }
-        .CreateConnectionAsync();
-    using var channel = await connection.CreateChannelAsync();
-    
-    // Declare a durable topic exchange for events
-    await channel.ExchangeDeclareAsync(
-        exchange: "events.topic",
-        type: RabbitMQ.Client.ExchangeType.Topic,
-        durable: true,
-        autoDelete: false);
-}
-
 public record NoteDto(string Text);
+public record FailEvent(string Text);
+
+public class NoteDtoHandler(ILogger<NoteDtoHandler> logger) : IMessageHandler<NoteDto>
+{
+    public Task HandleAsync(NoteDto message, MessageProperties properties, CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Received and handled: {EventType} {Body} {Props}", message, JsonSerializer.Serialize(message), JsonSerializer.Serialize(properties));
+        return Task.CompletedTask;
+    }
+}
+public class NoteAddedEventHandler(ILogger<NoteAddedEventHandler> logger) : IMessageHandler<NoteAddedEvent>
+{
+    public Task HandleAsync(NoteAddedEvent message, MessageProperties properties, CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Received and handled: {EventType} {Body} {Props}", message, JsonSerializer.Serialize(message), JsonSerializer.Serialize(properties));
+        return Task.CompletedTask;
+    }
+}
+public class FailEventHandler(ILogger<FailEventHandler> logger) : IMessageHandler<FailEvent>
+{
+    public Task HandleAsync(FailEvent message, MessageProperties properties, CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Received and will throw: {EventType} {Body} {Props}", message, JsonSerializer.Serialize(message), JsonSerializer.Serialize(properties));
+        throw new NotImplementedException("this event will fail, so we can test retry strategy and dlx");
+    }
+}

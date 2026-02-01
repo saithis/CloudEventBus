@@ -47,7 +47,7 @@ public class MessagePropertiesEnricherTests
         // Let's re-read Enricher code involved in Step 177.
         
         var options = new CloudEventsOptions { DefaultSource = "/test-service" };
-        var enricher = new MessagePropertiesEnricher(registry, options);
+        var enricher = new MessagePropertiesEnricher(registry, options, TimeProvider.System);
         
         // Act
         var result = enricher.Enrich<TestEvent>(null);
@@ -71,7 +71,7 @@ public class MessagePropertiesEnricherTests
             }));
             
         var options = new CloudEventsOptions { DefaultSource = "/orders-service" };
-        var enricher = new MessagePropertiesEnricher(registry, options);
+        var enricher = new MessagePropertiesEnricher(registry, options, TimeProvider.System);
         var properties = new MessageProperties();
         
         // Act
@@ -92,7 +92,7 @@ public class MessagePropertiesEnricherTests
     {
         // Arrange
         var registry = CreateRegistry(ch => AddMessage<TestEvent>(ch, "test.event"));
-        var enricher = new MessagePropertiesEnricher(registry, new CloudEventsOptions());
+        var enricher = new MessagePropertiesEnricher(registry, new CloudEventsOptions(), TimeProvider.System);
         var properties = new MessageProperties
         {
             Type = "custom.override.type"
@@ -111,7 +111,7 @@ public class MessagePropertiesEnricherTests
         // Arrange
         var registry = CreateRegistry(ch => AddMessage<TestEvent>(ch, "test.event"));
         var options = new CloudEventsOptions { DefaultSource = "/registry-source" };
-        var enricher = new MessagePropertiesEnricher(registry, options);
+        var enricher = new MessagePropertiesEnricher(registry, options, TimeProvider.System);
         var properties = new MessageProperties
         {
             Source = "/custom-source"
@@ -134,7 +134,7 @@ public class MessagePropertiesEnricherTests
                 m.Metadata["team"] = "platform";
             }));
             
-        var enricher = new MessagePropertiesEnricher(registry, new CloudEventsOptions());
+        var enricher = new MessagePropertiesEnricher(registry, new CloudEventsOptions(), TimeProvider.System);
         var properties = new MessageProperties();
         properties.TransportMetadata.Add("team", "custom-team");
         
@@ -155,7 +155,7 @@ public class MessagePropertiesEnricherTests
         var registry = new ChannelRegistry();
         registry.Freeze();
         
-        var enricher = new MessagePropertiesEnricher(registry, new CloudEventsOptions());
+        var enricher = new MessagePropertiesEnricher(registry, new CloudEventsOptions(), TimeProvider.System);
         var properties = new MessageProperties();
         
         // Act
@@ -192,7 +192,7 @@ public class MessagePropertiesEnricherTests
         // Arrange
         var registry = CreateRegistry(ch => AddMessage<TestEvent>(ch, "test.event"));
         var options = new CloudEventsOptions { DefaultSource = "/service" };
-        var enricher = new MessagePropertiesEnricher(registry, options);
+        var enricher = new MessagePropertiesEnricher(registry, options, TimeProvider.System);
         var properties = new MessageProperties();
         
         // Act

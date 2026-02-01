@@ -1,4 +1,3 @@
-using System.Reflection;
 using Saithis.CloudEventBus.CloudEvents;
 
 namespace Saithis.CloudEventBus.Core;
@@ -6,7 +5,7 @@ namespace Saithis.CloudEventBus.Core;
 /// <summary>
 /// Default implementation that enriches MessageProperties with metadata from the ChannelRegistry.
 /// </summary>
-public class MessagePropertiesEnricher(ChannelRegistry registry, CloudEventsOptions options) : IMessagePropertiesEnricher
+public class MessagePropertiesEnricher(ChannelRegistry registry, CloudEventsOptions options, TimeProvider timeProvider, ITransportMessageMetadataEnricher transportEnricher) : IMessagePropertiesEnricher
 {
     public MessageProperties Enrich<TMessage>(MessageProperties? properties) where TMessage : notnull
     {
@@ -17,58 +16,23 @@ public class MessagePropertiesEnricher(ChannelRegistry registry, CloudEventsOpti
     {
         properties ??= new MessageProperties();
         
-        // Set Time if not already set
-        properties.Time ??= DateTimeOffset.UtcNow;
+        properties.Id ??= Guid.NewGuid().ToString();
+        properties.Time ??= timeProvider.GetUtcNow();
+        properties.Source ??= options.DefaultSource;
         
         // Query registry for type info
-        ChannelRegistration? publishChannel = registry.FindPublishChannelForMessage(messageType);
-        MessageRegistration? typeInfo = publishChannel?.Messages.FirstOrDefault(m => m.MessageType == messageType);
-        if (typeInfo != null)
-        {
-            // Enrich Type if not already set
-            if (string.IsNullOrEmpty(properties.Type))
-            {
-                properties.Type = typeInfo.MessageTypeName;
-            }
-            
-            // Enrich Source if not already set
-            if (string.IsNullOrEmpty(properties.Source) && !string.IsNullOrEmpty(options.DefaultSource))
-            {
-                properties.Source = options.DefaultSource;
-            }
-            
-            // Copy registered extensions to TransportMetadata (only if not already present)
-            foreach (var ext in typeInfo.Metadata)
-            {
-                 properties.TransportMetadata.TryAdd(ext.Key, ext.Value?.ToString());
-            }
-        }
-        else
-        {
-             // Fallback: If not registered, try to resolve type from attribute
-             if (string.IsNullOrEmpty(properties.Type))
-             {
-                 var cloudEventAttr = messageType.GetCustomAttribute<Saithis.CloudEventBus.CloudEventAttribute>();
-                 if (cloudEventAttr != null)
-                 {
-                     properties.Type = cloudEventAttr.Type;
-                     if (string.IsNullOrEmpty(properties.Source) && cloudEventAttr.Source != null)
-                     {
-                          properties.Source = cloudEventAttr.Source;
-                     }
-                 }
-                 else
-                 {
-                     properties.Type = messageType.Name;
-                 }
-                 
-                 if (string.IsNullOrEmpty(properties.Source) && !string.IsNullOrEmpty(options.DefaultSource))
-                 {
-                     properties.Source = options.DefaultSource;
-                 }
-             }
-        }
+        var publishInfo = registry.GetPublishInformation(messageType);
+        if (publishInfo == null) 
+            return properties;
         
+        // Enrich Type if not already set
+        if (string.IsNullOrEmpty(properties.Type))
+        {
+            properties.Type = publishInfo.Message.MessageTypeName;
+        }
+            
+        transportEnricher.Enrich(publishInfo, properties);
+
         return properties;
     }
 }

@@ -13,5 +13,6 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="CloudEventBus.Tests" />
+        <InternalsVisibleTo Include="Saithis.CloudEventBus.RabbitMq" />
     </ItemGroup>
 </Project>

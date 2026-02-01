@@ -13,16 +13,23 @@ namespace Saithis.CloudEventBus.RabbitMq;
 /// See: https://github.com/cloudevents/spec/blob/main/cloudevents/bindings/amqp-protocol-binding.md
 /// </summary>
 public class CloudEventsAmqpMapper(
-    CloudEventsOptions options,
-    TimeProvider timeProvider) : IRabbitMqEnvelopeMapper
+    CloudEventsOptions options) : IRabbitMqEnvelopeMapper
 {
     public byte[] MapOutgoing(byte[] serializedData, MessageProperties props, BasicProperties outgoing)
     {
         // Ensure required CloudEvents fields are set
-        props.Id ??= Guid.NewGuid().ToString(); // TODO: set this in the enricher
-        props.Time ??= timeProvider.GetUtcNow(); // TODO: set this in the enricher
-        props.Source ??= options.DefaultSource; // TODO: set this in the enricher
-        
+        if (string.IsNullOrEmpty(props.Id))
+        {
+            throw new InvalidOperationException("CloudEvents 'id' is required but not set.");
+        }
+        if (string.IsNullOrEmpty(props.Source))
+        {
+            throw new InvalidOperationException("CloudEvents 'source' is required but not set.");
+        }
+        if (props.Time is null)
+        {
+            throw new InvalidOperationException("CloudEvents 'time' is required but not set.");
+        }
         if (string.IsNullOrEmpty(props.Type))
         {
             throw new InvalidOperationException(

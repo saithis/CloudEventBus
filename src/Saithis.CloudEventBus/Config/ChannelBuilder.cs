@@ -5,6 +5,8 @@ namespace Saithis.CloudEventBus.Config;
 
 public class ChannelBuilder(ChannelRegistration channel)
 {
+    internal ChannelRegistration Channel => channel;
+    
     /// <summary>
     /// Configures transport-specific options for this channel.
     /// </summary>
@@ -53,7 +55,7 @@ public class ChannelBuilder(ChannelRegistration channel)
         AddMessage<T>(configure);
         return this;
     }
-
+    
     #endregion
 
     private void AddMessage<T>(Action<MessageBuilder>? configure, string? typeName = null)

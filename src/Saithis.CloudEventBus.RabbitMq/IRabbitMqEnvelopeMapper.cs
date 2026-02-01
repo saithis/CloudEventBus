@@ -12,12 +12,12 @@ public interface IRabbitMqEnvelopeMapper
 {
     /// <summary>
     /// Maps outgoing message to RabbitMQ properties.
-    /// Returns the body to send (may be wrapped for structured mode).
+    /// Returns the body to send (might be wrapped for structured mode).
     /// </summary>
     /// <param name="serializedData">The serialized message data.</param>
     /// <param name="props">Message properties to map.</param>
     /// <param name="outgoing">RabbitMQ properties to populate.</param>
-    /// <returns>The message body to send (may be wrapped in CloudEvents envelope).</returns>
+    /// <returns>The message body to send (might be wrapped in CloudEvents envelope).</returns>
     byte[] MapOutgoing(byte[] serializedData, MessageProperties props, BasicProperties outgoing);
     
     /// <summary>

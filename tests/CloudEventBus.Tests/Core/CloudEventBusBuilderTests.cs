@@ -20,7 +20,7 @@ public class CloudEventBusBuilderTests
         builder.AddEventConsumeChannel("test-channel", _ => {});
         
         // Assert
-        var channel = builder.ChannelRegistry.GetChannel("test-channel");
+        var channel = builder.ChannelRegistry.GetPublishChannel("test-channel");
         channel.Should().NotBeNull();
         channel!.Intent.Should().Be(ChannelType.EventConsume);
     }
@@ -36,7 +36,7 @@ public class CloudEventBusBuilderTests
         builder.AddEventPublishChannel("pub-channel", _ => {});
         
         // Assert
-        var channel = builder.ChannelRegistry.GetChannel("pub-channel");
+        var channel = builder.ChannelRegistry.GetPublishChannel("pub-channel");
         channel.Should().NotBeNull();
         channel!.Intent.Should().Be(ChannelType.EventPublish);
     }
@@ -52,7 +52,7 @@ public class CloudEventBusBuilderTests
         builder.AddEventConsumeChannel("test-channel", c => c.Consumes<TestEvent>());
         
         // Assert
-        var channel = builder.ChannelRegistry.GetChannel("test-channel");
+        var channel = builder.ChannelRegistry.GetPublishChannel("test-channel");
         channel.Should().NotBeNull();
         var msg = channel!.GetMessage(typeof(TestEvent));
         msg.Should().NotBeNull();
@@ -70,7 +70,7 @@ public class CloudEventBusBuilderTests
         builder.AddEventPublishChannel("pub-channel", c => c.Produces<TestEvent>());
         
         // Assert
-        var channel = builder.ChannelRegistry.GetChannel("pub-channel");
+        var channel = builder.ChannelRegistry.GetPublishChannel("pub-channel");
         channel.Should().NotBeNull();
         var msg = channel!.GetMessage(typeof(TestEvent));
         msg.Should().NotBeNull();

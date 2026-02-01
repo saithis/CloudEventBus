@@ -7,7 +7,7 @@ namespace Saithis.CloudEventBus;
 
 public class CloudEventBusBuilder
 {
-    internal IServiceCollection Services { get; }
+    public IServiceCollection Services { get; }
     internal CloudEventsOptions CloudEventsOptions { get; } = new();
     internal ChannelRegistry ChannelRegistry { get; } = new();
     

@@ -4,13 +4,11 @@ namespace Saithis.CloudEventBus.Config;
 
 public class MessageBuilder(MessageRegistration message)
 {
-    /// <summary>
-    /// Adds or updates metadata for this message registration.
-    /// Transport extensions (e.g. RabbitMq) use this to store routing keys etc.
-    /// </summary>
-    public MessageBuilder WithMetadata(string key, object value)
+    internal MessageRegistration MessageRegistration => message;
+
+    public MessageBuilder WithType(string typeName)
     {
-        message.Metadata[key] = value;
+        message.MessageTypeName = typeName;
         return this;
     }
 }

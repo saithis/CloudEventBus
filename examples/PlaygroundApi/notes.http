@@ -16,3 +16,11 @@ Content-Type: application/json
 {
   "text":"This is my new note :)"
 }
+
+### POST send fail event for retry and dlx tests
+POST http://localhost:5000/fail
+Content-Type: application/json
+
+{
+  "text":"This is my failure event"
+}

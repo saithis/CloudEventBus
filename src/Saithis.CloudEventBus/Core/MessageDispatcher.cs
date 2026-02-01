@@ -31,7 +31,7 @@ public class MessageDispatcher(
         // Try ChannelRegistry first (Topology based)
         if (channelName != null)
         {
-            var channel = channelRegistry.GetChannel(channelName);
+            var channel = channelRegistry.GetConsumeChannel(channelName);
             var msgReg = channel?.Messages.FirstOrDefault(m => m.MessageTypeName == properties.Type);
             if (msgReg != null)
             {
