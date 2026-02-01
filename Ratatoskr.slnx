@@ -1,0 +1,16 @@
+﻿<Solution>
+  <Folder Name="/examples/">
+    <Project Path="examples/AppHost/AppHost.csproj" />
+    <Project Path="examples/PlaygroundApi\PlaygroundApi.csproj" />
+  </Folder>
+  <Folder Name="/notes/">
+    <File Path="notes\ideas.md" />
+    <File Path="notes\todos.md" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests\Ratatoskr.Tests\Ratatoskr.Tests.csproj" />
+  </Folder>
+  <Project Path="src\Ratatoskr.EfCore\Ratatoskr.EfCore.csproj" />
+  <Project Path="src\Ratatoskr.RabbitMq\Ratatoskr.RabbitMq.csproj" />
+  <Project Path="src\Ratatoskr\Ratatoskr.csproj" />
+</Solution>

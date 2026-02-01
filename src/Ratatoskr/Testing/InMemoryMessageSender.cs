@@ -1,0 +1,58 @@
+using System.Collections.Concurrent;
+using System.Text;
+using System.Text.Json;
+using Ratatoskr.Core;
+
+namespace Ratatoskr.Testing;
+
+/// <summary>
+/// A message sender that stores messages in memory for testing.
+/// Thread-safe for parallel test execution.
+/// </summary>
+public class InMemoryMessageSender(ChannelRegistry? registry = null) : IMessageSender
+{
+    private readonly ConcurrentBag<SentMessage> _messages = new();
+
+    /// <summary>
+    /// Gets the message type registry used by this sender.
+    /// </summary>
+    public ChannelRegistry? Registry { get; } = registry;
+
+    /// <summary>
+    /// All messages that have been sent.
+    /// </summary>
+    public IReadOnlyCollection<SentMessage> SentMessages => _messages.ToArray();
+    
+    public Task SendAsync(byte[] content, MessageProperties props, CancellationToken cancellationToken)
+    {
+        _messages.Add(new SentMessage(content, props, DateTimeOffset.UtcNow));
+        return Task.CompletedTask;
+    }
+    
+    /// <summary>
+    /// Clears all sent messages. Call this in test setup/teardown.
+    /// </summary>
+    public void Clear()
+    {
+        _messages.Clear();
+    }
+}
+
+/// <summary>
+/// Represents a message that was sent via InMemoryMessageSender.
+/// </summary>
+public record SentMessage(byte[] Content, MessageProperties Properties, DateTimeOffset SentAt)
+{
+    /// <summary>
+    /// Deserializes the message content to the specified type.
+    /// </summary>
+    public T? Deserialize<T>()
+    {
+        return JsonSerializer.Deserialize<T>(Content);
+    }
+    
+    /// <summary>
+    /// Gets the content as a string (assumes UTF-8 encoding).
+    /// </summary>
+    public string ContentAsString => Encoding.UTF8.GetString(Content);
+}

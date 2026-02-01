@@ -3,13 +3,14 @@ using Medallion.Threading;
 using Medallion.Threading.FileSystem;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PlaygroundApi;
 using PlaygroundApi.Database;
 using PlaygroundApi.Database.Entities;
 using PlaygroundApi.Events;
-using Saithis.CloudEventBus;
-using Saithis.CloudEventBus.Core;
-using Saithis.CloudEventBus.EfCore;
-using Saithis.CloudEventBus.RabbitMq;
+using Ratatoskr;
+using Ratatoskr.Core;
+using Ratatoskr.EfCore;
+using Ratatoskr.RabbitMq.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,7 +25,7 @@ builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 
 
 var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmq");
-builder.Services.AddCloudEventBus(bus =>
+builder.Services.AddRatatoskr(bus =>
 {
     bus
         .UseRabbitMq(c =>
@@ -93,14 +94,14 @@ if (!string.IsNullOrEmpty(dbConnectionString))
 app.MapGet("/", () => "Hello World!");
 
 // Fail consumption test
-app.MapPost("/fail", async ([FromBody] FailEvent dto, [FromServices] ICloudEventBus bus) =>
+app.MapPost("/fail", async ([FromBody] FailEvent dto, [FromServices] IRatatoskr bus) =>
 {
     await bus.PublishDirectAsync(dto);
     return TypedResults.Ok(dto);
 });
 
 // Direct publishing example - no transaction
-app.MapPost("/send", async ([FromBody] NoteDto dto, [FromServices] ICloudEventBus bus) =>
+app.MapPost("/send", async ([FromBody] NoteDto dto, [FromServices] IRatatoskr bus) =>
 {
     // PublishDirectAsync - sends immediately, no outbox
     await bus.PublishDirectAsync(dto);
@@ -135,30 +136,33 @@ app.MapGet("/notes", async ([FromServices] NotesDbContext db) =>
 
 app.Run();
 
-public record NoteDto(string Text);
-public record FailEvent(string Text);
+namespace PlaygroundApi
+{
+    public record NoteDto(string Text);
+    public record FailEvent(string Text);
 
-public class NoteDtoHandler(ILogger<NoteDtoHandler> logger) : IMessageHandler<NoteDto>
-{
-    public Task HandleAsync(NoteDto message, MessageProperties properties, CancellationToken cancellationToken)
+    public class NoteDtoHandler(ILogger<NoteDtoHandler> logger) : IMessageHandler<NoteDto>
     {
-        logger.LogInformation("Received and handled: {EventType} {Body} {Props}", message, JsonSerializer.Serialize(message), JsonSerializer.Serialize(properties));
-        return Task.CompletedTask;
+        public Task HandleAsync(NoteDto message, MessageProperties properties, CancellationToken cancellationToken)
+        {
+            logger.LogInformation("Received and handled: {EventType} {Body} {Props}", message, JsonSerializer.Serialize(message), JsonSerializer.Serialize(properties));
+            return Task.CompletedTask;
+        }
     }
-}
-public class NoteAddedEventHandler(ILogger<NoteAddedEventHandler> logger) : IMessageHandler<NoteAddedEvent>
-{
-    public Task HandleAsync(NoteAddedEvent message, MessageProperties properties, CancellationToken cancellationToken)
+    public class NoteAddedEventHandler(ILogger<NoteAddedEventHandler> logger) : IMessageHandler<NoteAddedEvent>
     {
-        logger.LogInformation("Received and handled: {EventType} {Body} {Props}", message, JsonSerializer.Serialize(message), JsonSerializer.Serialize(properties));
-        return Task.CompletedTask;
+        public Task HandleAsync(NoteAddedEvent message, MessageProperties properties, CancellationToken cancellationToken)
+        {
+            logger.LogInformation("Received and handled: {EventType} {Body} {Props}", message, JsonSerializer.Serialize(message), JsonSerializer.Serialize(properties));
+            return Task.CompletedTask;
+        }
     }
-}
-public class FailEventHandler(ILogger<FailEventHandler> logger) : IMessageHandler<FailEvent>
-{
-    public Task HandleAsync(FailEvent message, MessageProperties properties, CancellationToken cancellationToken)
+    public class FailEventHandler(ILogger<FailEventHandler> logger) : IMessageHandler<FailEvent>
     {
-        logger.LogInformation("Received and will throw: {EventType} {Body} {Props}", message, JsonSerializer.Serialize(message), JsonSerializer.Serialize(properties));
-        throw new NotImplementedException("this event will fail, so we can test retry strategy and dlx");
+        public Task HandleAsync(FailEvent message, MessageProperties properties, CancellationToken cancellationToken)
+        {
+            logger.LogInformation("Received and will throw: {EventType} {Body} {Props}", message, JsonSerializer.Serialize(message), JsonSerializer.Serialize(properties));
+            throw new NotImplementedException("this event will fail, so we can test retry strategy and dlx");
+        }
     }
 }

@@ -22,9 +22,9 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\src\Saithis.CloudEventBus.EfCore\Saithis.CloudEventBus.EfCore.csproj" />
-      <ProjectReference Include="..\..\src\Saithis.CloudEventBus.RabbitMq\Saithis.CloudEventBus.RabbitMq.csproj" />
-      <ProjectReference Include="..\..\src\Saithis.CloudEventBus\Saithis.CloudEventBus.csproj" />
+      <ProjectReference Include="..\..\src\Ratatoskr.EfCore\Ratatoskr.EfCore.csproj" />
+      <ProjectReference Include="..\..\src\Ratatoskr.RabbitMq\Ratatoskr.RabbitMq.csproj" />
+      <ProjectReference Include="..\..\src\Ratatoskr\Ratatoskr.csproj" />
     </ItemGroup>
 
 </Project>

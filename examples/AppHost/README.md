@@ -1,4 +1,4 @@
-# CloudEventBus AppHost
+# Ratatoskr AppHost
 
 This is a .NET Aspire AppHost that orchestrates the PlaygroundApi along with its dependencies:
 

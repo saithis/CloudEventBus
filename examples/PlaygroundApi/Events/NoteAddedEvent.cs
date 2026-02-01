@@ -1,8 +1,8 @@
-using Saithis.CloudEventBus;
+using Ratatoskr;
 
 namespace PlaygroundApi.Events;
 
-[CloudEvent("com.example.notes.added")]
+[RatatoskrMessage("com.example.notes.added")]
 public class NoteAddedEvent
 {
     public required int Id { get; init; }

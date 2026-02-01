@@ -1,0 +1,65 @@
+using Microsoft.Extensions.DependencyInjection;
+using Ratatoskr.CloudEvents;
+using Ratatoskr.Config;
+using Ratatoskr.Core;
+
+namespace Ratatoskr;
+
+public class RatatoskrBuilder
+{
+    public IServiceCollection Services { get; }
+    internal CloudEventsOptions CloudEventsOptions { get; } = new();
+    internal ChannelRegistry ChannelRegistry { get; } = new();
+    
+    internal RatatoskrBuilder(IServiceCollection services)
+    {
+        Services = services;
+    }
+    
+    #region New Channel Config
+
+    public RatatoskrBuilder AddEventPublishChannel(string channelName, Action<ChannelBuilder> configure)
+        => AddChannel(channelName, ChannelType.EventPublish, configure);
+
+    public RatatoskrBuilder AddCommandPublishChannel(string channelName, Action<ChannelBuilder> configure)
+        => AddChannel(channelName, ChannelType.CommandPublish, configure);
+
+    public RatatoskrBuilder AddCommandConsumeChannel(string channelName, Action<ChannelBuilder> configure)
+        => AddChannel(channelName, ChannelType.CommandConsume, configure);
+
+    public RatatoskrBuilder AddEventConsumeChannel(string channelName, Action<ChannelBuilder> configure)
+        => AddChannel(channelName, ChannelType.EventConsume, configure);
+
+    private RatatoskrBuilder AddChannel(string name, ChannelType intent, Action<ChannelBuilder> configure)
+    {
+        var channel = new ChannelRegistration(name, intent);
+        var builder = new ChannelBuilder(channel);
+        configure(builder);
+        ChannelRegistry.Register(channel);
+        return this;
+    }
+
+    #endregion
+
+    /// <summary>
+    /// Configures CloudEvents format options.
+    /// </summary>
+    public RatatoskrBuilder ConfigureCloudEvents(Action<CloudEventsOptions> configure)
+    {
+        configure(CloudEventsOptions);
+        return this;
+    }
+    
+    /// <summary>
+    /// Registers a message handler.
+    /// </summary>
+    public RatatoskrBuilder AddHandler<TMessage, THandler>()
+        where TMessage : notnull
+        where THandler : class, IMessageHandler<TMessage>
+    {
+        Services.AddScoped<THandler>();
+        Services.AddScoped<IMessageHandler<TMessage>>(sp => sp.GetRequiredService<THandler>());
+        
+        return this;
+    }
+}
