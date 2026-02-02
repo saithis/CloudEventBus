@@ -15,13 +15,9 @@ public abstract class RatatoskrIntegrationTest(RabbitMqContainerFixture rabbitMq
     : IAsyncDisposable
 {
     private WebApplicationFactory<Program>? _factory;
-    private IServiceScope? _scope;
-    
-    // TODO: remove and create InScopeAsync
-    protected IServiceProvider Services => _scope?.ServiceProvider ?? throw new InvalidOperationException("Test not initialized. Did you forget to call StartTestAsync?");
-    public RabbitMqContainerFixture RabbitMq => rabbitMq;
-    public PostgresContainerFixture Postgres => postgres ?? throw new InvalidOperationException("Postgres not available");
 
+    // Unique ID for this test instance to isolate resources
+    protected string TestId { get; } = Guid.NewGuid().ToString("N");
     protected string RabbitMqConnectionString => rabbitMq.ConnectionString;
     // Override the connection string to point to the unique database for this test
     protected string PostgresConnectionString 
@@ -35,10 +31,6 @@ public abstract class RatatoskrIntegrationTest(RabbitMqContainerFixture rabbitMq
             return builder.ToString();
         }
     }
-
-    // Unique ID for this test instance to isolate resources
-    protected string TestId { get; } = Guid.NewGuid().ToString("N");
-
 
     public virtual async Task StartTestAsync(Action<IServiceCollection>? configure = null)
     {
@@ -55,17 +47,14 @@ public abstract class RatatoskrIntegrationTest(RabbitMqContainerFixture rabbitMq
         });
 
         // Create the scope from the factory's services
-        _scope = _factory.Services.CreateScope();
-
-        var topologyManager = _scope.ServiceProvider.GetService<RabbitMqTopologyManager>();
+        using var scope = _factory.Services.CreateScope();
+        var topologyManager = scope.ServiceProvider.GetService<RabbitMqTopologyManager>();
         if (topologyManager != null)
         {
             // Wait for topology provisioning to complete
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await topologyManager.WaitForProvisioningAsync(cts.Token);
         }
-
-        await OnInitializedAsync();
     }
 
     private async Task CreateDatabaseAsync()
@@ -91,23 +80,11 @@ public abstract class RatatoskrIntegrationTest(RabbitMqContainerFixture rabbitMq
         services.AddSingleton<IDistributedLockProvider>(_ => new FileDistributedSynchronizationProvider(lockFileDirectory));
     }
 
-    protected virtual Task OnInitializedAsync()
-    {
-        return Task.CompletedTask;
-    }
-
     public async ValueTask DisposeAsync()
     {
-        if (_scope is IAsyncDisposable asyncScope)
-            await asyncScope.DisposeAsync();
-        else
-            _scope?.Dispose();
-
         if (_factory != null)
             await _factory.DisposeAsync();
             
-        await OnDisposedAsync();
-
         await DropDatabaseAsync();
     }
 
@@ -133,13 +110,49 @@ public abstract class RatatoskrIntegrationTest(RabbitMqContainerFixture rabbitMq
         }
     }
 
-    protected virtual Task OnDisposedAsync()
-    {
-        return Task.CompletedTask;
-    }
-
     // --- Helper Methods ---
 
+    protected class ScopeContext
+    {
+        public required IServiceProvider ServiceProvider { get; set; }
+    }
+    protected async Task InScopeAsync(Func<ScopeContext, Task> arrange)
+    {
+        using var scope = _factory.Services.CreateScope();
+        await arrange(new ScopeContext
+        {
+            ServiceProvider = scope.ServiceProvider,
+        });
+    }
+
+    protected async Task InScopeAsync(Action<ScopeContext> arrange)
+    {
+        await InScopeAsync(ctx =>
+        {
+            arrange(ctx);
+            return Task.CompletedTask;
+        });
+    }
+
+    protected async Task<TRes> InScopeAsync<TRes>(Func<ScopeContext, Task<TRes>> arrange)
+    {
+        using var scope = _factory.Services.CreateScope();
+        TRes result = await arrange(new ScopeContext
+        {
+            ServiceProvider = scope.ServiceProvider,
+        });
+        return result;
+    }
+
+    protected async Task<TRes> InScopeAsync<TRes>(Func<ScopeContext, TRes> arrange)
+    {
+        return await InScopeAsync(ctx =>
+        {
+            TRes result = arrange(ctx);
+            return Task.FromResult(result);
+        });
+    }
+    
     protected async Task PublishToRabbitMqAsync<T>(string exchange, string routingKey, T message, string? type = null)
     {
         var factory = new ConnectionFactory { Uri = new Uri(RabbitMqConnectionString) };
@@ -152,7 +165,7 @@ public abstract class RatatoskrIntegrationTest(RabbitMqContainerFixture rabbitMq
         var props = new BasicProperties
         {
             MessageId = Guid.NewGuid().ToString(),
-            Type = type ?? System.Reflection.CustomAttributeExtensions.GetCustomAttribute<RatatoskrMessageAttribute>(typeof(T))?.Type ?? typeof(T).Name,
+            Type = type ?? System.Reflection.CustomAttributeExtensions.GetCustomAttribute<RatatoskrMessageAttribute>(typeof(T))?.Type ?? throw new NullReferenceException(),
             ContentType = "application/json",
             DeliveryMode = DeliveryModes.Persistent
         };
@@ -208,7 +221,7 @@ public abstract class RatatoskrIntegrationTest(RabbitMqContainerFixture rabbitMq
         {
             if (DateTime.UtcNow - start > timeout)
                 throw new TimeoutException("Condition not met within timeout.");
-            await Task.Delay(100);
+            await Task.Delay(50);
         }
     }
 }

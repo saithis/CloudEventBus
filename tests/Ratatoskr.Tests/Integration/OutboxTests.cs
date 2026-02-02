@@ -41,31 +41,32 @@ public class OutboxTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFix
         await EnsureQueueBoundAsync(QueueName, ExchangeName, DefaultRoutingKey);
         
         // Ensure DB Created
-        using (var scope = Services.CreateScope())
+        await InScopeAsync(async ctx =>
         {
-            var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+            var dbContext = ctx.ServiceProvider.GetRequiredService<TestDbContext>();
             await dbContext.Database.EnsureCreatedAsync();
-        }
+        });
 
         // Act
-        using (var scope = Services.CreateScope())
+        await InScopeAsync(async ctx =>
         {
-            var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-            
+            var dbContext = ctx.ServiceProvider.GetRequiredService<TestDbContext>();
+
             // Add entity and event
             dbContext.TestEntities.Add(new TestEntity { Name = "Outbox Test", CreatedAt = DateTimeOffset.UtcNow });
-            
-            dbContext.OutboxMessages.Add(new TestEvent { Id = "outbox-1", Data = "committed" }, new MessageProperties().SetRoutingKey(DefaultRoutingKey));
-            
+
+            dbContext.OutboxMessages.Add(new TestEvent { Id = "outbox-1", Data = "committed" },
+                new MessageProperties().SetRoutingKey(DefaultRoutingKey));
+
             await dbContext.SaveChangesAsync();
-        }
+        });
         
         // Process Outbox
-        using (var scope = Services.CreateScope())
+        await InScopeAsync(async ctx =>
         {
-            var processor = scope.ServiceProvider.GetRequiredService<SynchronousOutboxProcessor<TestDbContext>>();
+            var processor = ctx.ServiceProvider.GetRequiredService<SynchronousOutboxProcessor<TestDbContext>>();
             await processor.ProcessAllAsync();
-        }
+        });
 
         // Assert
         await Task.Delay(500);
@@ -98,24 +99,25 @@ public class OutboxTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFix
         });
 
         // Ensure DB Created
-        using (var scope = Services.CreateScope())
+        await InScopeAsync(async ctx =>
         {
-            var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+            var dbContext = ctx.ServiceProvider.GetRequiredService<TestDbContext>();
             await dbContext.Database.EnsureCreatedAsync();
-        }
+        });
         
         // The Host is already running (started in InitializeAsync), so the consumer should be active.
 
         // Act - Stage message
-        using (var scope = Services.CreateScope())
+        await InScopeAsync(async ctx =>
         {
-            var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-            
+            var dbContext = ctx.ServiceProvider.GetRequiredService<TestDbContext>();
+
             // We are sending Command style to the queue name
-            dbContext.OutboxMessages.Add(new TestEvent { Id = "e2e-1", Data = "outbox->consumer" }, new MessageProperties().SetExchange(QueueName));
-            
+            dbContext.OutboxMessages.Add(new TestEvent { Id = "e2e-1", Data = "outbox->consumer" },
+                new MessageProperties().SetExchange(QueueName));
+
             await dbContext.SaveChangesAsync();
-        }
+        });
 
         // Assert
         await WaitForConditionAsync(() => handler.HandledMessages.Count > 0 && handler.HandledMessages.Any(m => m.Id == "e2e-1"), TimeSpan.FromSeconds(5));

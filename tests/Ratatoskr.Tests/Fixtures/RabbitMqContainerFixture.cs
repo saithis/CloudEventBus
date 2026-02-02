@@ -21,22 +21,6 @@ public class RabbitMqContainerFixture : IAsyncInitializer, IAsyncDisposable
             .Build();
             
         await _container.StartAsync();
-        
-        // Create test exchange
-        await EnsureTestExchangeAsync();
-    }
-
-    private async Task EnsureTestExchangeAsync()
-    {
-        var factory = new ConnectionFactory { Uri = new Uri(ConnectionString) };
-        await using var connection = await factory.CreateConnectionAsync();
-        await using var channel = await connection.CreateChannelAsync();
-        
-        await channel.ExchangeDeclareAsync(
-            exchange: "test.exchange",
-            type: ExchangeType.Topic,
-            durable: true,
-            autoDelete: false);
     }
 
     public async ValueTask DisposeAsync()

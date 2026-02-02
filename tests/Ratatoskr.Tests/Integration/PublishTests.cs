@@ -31,9 +31,6 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
             });
         });
 
-        var provider = Services;
-        var bus = provider.GetRequiredService<IRatatoskr>();
-
         var queueName = $"pub-queue-{TestId}";
         await EnsureQueueBoundAsync(queueName, ExchangeName, DefaultRoutingKey);
 
@@ -41,7 +38,11 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
         var props = new MessageProperties();
         props.SetRoutingKey(DefaultRoutingKey);
         
-        await bus.PublishDirectAsync(new TestEvent { Data = "direct publish" }, props);
+        await InScopeAsync(async ctx =>
+        {
+            var bus = ctx.ServiceProvider.GetRequiredService<IRatatoskr>();
+            await bus.PublishDirectAsync(new TestEvent { Data = "direct publish" }, props);
+        });
         
         // Assert
         await Task.Delay(500);
@@ -66,9 +67,6 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
             });
         });
         
-        var provider = Services;
-        var bus = provider.GetRequiredService<IRatatoskr>();
-
         var queueName = $"pub-binary-{TestId}";
         await EnsureQueueBoundAsync(queueName, ExchangeName, DefaultRoutingKey);
 
@@ -76,7 +74,11 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
         var props = new MessageProperties();
         props.SetRoutingKey(DefaultRoutingKey);
 
-        await bus.PublishDirectAsync(new TestEvent { Data = "binary mode" }, props);
+        await InScopeAsync(async ctx =>
+        {
+            var bus = ctx.ServiceProvider.GetRequiredService<IRatatoskr>();
+            await bus.PublishDirectAsync(new TestEvent { Data = "binary mode" }, props);
+        });
 
         // Assert
         await Task.Delay(500);
@@ -102,8 +104,6 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
             });
         });
 
-        var provider = Services;
-        var bus = provider.GetRequiredService<IRatatoskr>();
 
         var queueName = $"pub-struct-{TestId}";
         await EnsureQueueBoundAsync(queueName, ExchangeName, DefaultRoutingKey);
@@ -112,7 +112,11 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
         var props = new MessageProperties();
         props.SetRoutingKey(DefaultRoutingKey);
 
-        await bus.PublishDirectAsync(new TestEvent { Data = "structured mode" }, props);
+        await InScopeAsync(async ctx =>
+        {
+            var bus = ctx.ServiceProvider.GetRequiredService<IRatatoskr>();
+            await bus.PublishDirectAsync(new TestEvent { Data = "structured mode" }, props);
+        });
 
         // Assert
         await Task.Delay(500);
