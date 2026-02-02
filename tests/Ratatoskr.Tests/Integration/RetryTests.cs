@@ -24,30 +24,22 @@ public class RetryTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFixt
     {
         // Arrange
         var handler = new ThrowingTestEventHandler();
-        var services = new ServiceCollection();
-        base.ConfigureServices(services);
         
-        services.AddRatatoskr(bus => 
+        await StartTestAsync(services =>
         {
-            bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
-            bus.AddCommandConsumeChannel(QueueName, c => c
-                .WithRabbitMq(o => o
-                    .QueueName(QueueName)
-                    .AutoAck(false)
-                    .RetryOptions(maxRetries: 3, delay: TimeSpan.FromSeconds(2), useManaged: true)
-                    .QueueOptions(durable: false, autoDelete: true))
-                .Consumes<TestEvent>());
-            bus.AddHandler<TestEvent, ThrowingTestEventHandler>();
+            services.AddRatatoskr(bus => 
+            {
+                bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
+                bus.AddCommandConsumeChannel(QueueName, c => c
+                    .WithRabbitMq(o => o
+                        .QueueName(QueueName)
+                        .AutoAck(false)
+                        .RetryOptions(maxRetries: 3, delay: TimeSpan.FromSeconds(2), useManaged: true)
+                        .QueueOptions(durable: false, autoDelete: true))
+                    .Consumes<TestEvent>());
+                bus.AddHandler<TestEvent, ThrowingTestEventHandler>(handler);
+            });
         });
-        
-        services.AddSingleton(handler);
-
-        var provider = services.BuildServiceProvider();
-        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
-        await topology.ProvisionTopologyAsync(CancellationToken.None);
-
-        var consumer = provider.GetRequiredService<IHostedService>();
-        await consumer.StartAsync(CancellationToken.None);
 
         try
         {
@@ -66,7 +58,7 @@ public class RetryTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFixt
         }
         finally
         {
-            await consumer.StopAsync(CancellationToken.None);
+            // Consumer stops with factory dispose
         }
     }
 
@@ -75,31 +67,23 @@ public class RetryTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFixt
     {
         // Arrange
         var handler = new ThrowingTestEventHandler();
-        var services = new ServiceCollection();
-        base.ConfigureServices(services);
         
-        // Fast retries for test
-        services.AddRatatoskr(bus => 
+        await StartTestAsync(services =>
         {
-            bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
-            bus.AddCommandConsumeChannel(QueueName, c => c
-                .WithRabbitMq(o => o
-                    .QueueName(QueueName)
-                    .AutoAck(false)
-                    .RetryOptions(maxRetries: 2, delay: TimeSpan.FromMilliseconds(100), useManaged: true)
-                    .QueueOptions(durable: false, autoDelete: true))
-                .Consumes<TestEvent>());
-            bus.AddHandler<TestEvent, ThrowingTestEventHandler>();
+            // Fast retries for test
+            services.AddRatatoskr(bus => 
+            {
+                bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
+                bus.AddCommandConsumeChannel(QueueName, c => c
+                    .WithRabbitMq(o => o
+                        .QueueName(QueueName)
+                        .AutoAck(false)
+                        .RetryOptions(maxRetries: 2, delay: TimeSpan.FromMilliseconds(100), useManaged: true)
+                        .QueueOptions(durable: false, autoDelete: true))
+                    .Consumes<TestEvent>());
+                bus.AddHandler<TestEvent, ThrowingTestEventHandler>(handler);
+            });
         });
-        
-        services.AddSingleton(handler);
-
-        var provider = services.BuildServiceProvider();
-        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
-        await topology.ProvisionTopologyAsync(CancellationToken.None);
-
-        var consumer = provider.GetRequiredService<IHostedService>();
-        await consumer.StartAsync(CancellationToken.None);
 
         try
         {
@@ -119,7 +103,7 @@ public class RetryTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFixt
         }
         finally
         {
-            await consumer.StopAsync(CancellationToken.None);
+            // Consumer stops with factory dispose
         }
     }
 
@@ -127,34 +111,24 @@ public class RetryTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFixt
     public async Task Consume_NoHandler_MovesToDlq()
     {
         // Arrange - No handlers registered
-        var services = new ServiceCollection();
-        base.ConfigureServices(services);
-        
-        services.AddRatatoskr(bus => 
+        await StartTestAsync(services =>
         {
-            bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
-            bus.AddCommandConsumeChannel(QueueName, c => c
-                .WithRabbitMq(o => o
-                    .QueueName(QueueName)
-                    .AutoAck(false)
-                    .RetryOptions(maxRetries: 2, delay: TimeSpan.FromMilliseconds(100), useManaged: true)
-                    .QueueOptions(durable: false, autoDelete: true)));
-                // No Consumes<> or AddHandler<> for the event type we send
+            services.AddRatatoskr(bus => 
+            {
+                bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
+                bus.AddCommandConsumeChannel(QueueName, c => c
+                    .WithRabbitMq(o => o
+                        .QueueName(QueueName)
+                        .AutoAck(false)
+                        .RetryOptions(maxRetries: 2, delay: TimeSpan.FromMilliseconds(100), useManaged: true)
+                        .QueueOptions(durable: false, autoDelete: true)));
+                    // No Consumes<> or AddHandler<> for the event type we send
+            });
         });
-        
-        var provider = services.BuildServiceProvider();
-        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
-        await topology.ProvisionTopologyAsync(CancellationToken.None);
-
-        var consumer = provider.GetRequiredService<IHostedService>();
-        await consumer.StartAsync(CancellationToken.None);
 
         try
         {
             // Act - Send unknown event type
-            // Note: If we don't declare Consumes<>, the exchange/queue binding for that type might not exist if we relied on auto-provisioning bindings.
-            // But here we are publishing DIRECTLY to the queue (Command style), so routing is by name.
-            // However, the consumer needs to attempt to handle it.
             
             // We publish directly to queue
             await PublishToRabbitMqAsync(exchange: "", routingKey: QueueName, new TestEvent { Id = "nohandler", Data = "fail" }, type: "unknown.event");
@@ -168,7 +142,7 @@ public class RetryTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFixt
         }
         finally
         {
-            await consumer.StopAsync(CancellationToken.None);
+            // Consumer stops with factory dispose
         }
     }
     

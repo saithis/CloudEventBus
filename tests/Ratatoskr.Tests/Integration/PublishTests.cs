@@ -16,24 +16,23 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
     private string ExchangeName => $"pub-test-{TestId}";
     private string DefaultRoutingKey => "test.event";
 
-    protected override void ConfigureServices(IServiceCollection services)
-    {
-        base.ConfigureServices(services);
-        services.AddRatatoskr(bus => 
-        {
-            bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
-            bus.AddEventPublishChannel(ExchangeName, c => c.Produces<TestEvent>());
-        });
-    }
+
 
     [Test]
     public async Task Publish_DirectToExchange_MessageDelivered()
     {
         // Arrange
+        await StartTestAsync(services =>
+        {
+            services.AddRatatoskr(bus => 
+            {
+                bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
+                bus.AddEventPublishChannel(ExchangeName, c => c.Produces<TestEvent>());
+            });
+        });
+
         var provider = Services;
         var bus = provider.GetRequiredService<IRatatoskr>();
-        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
-        await topology.ProvisionTopologyAsync(CancellationToken.None);
 
         var queueName = $"pub-queue-{TestId}";
         await EnsureQueueBoundAsync(queueName, ExchangeName, DefaultRoutingKey);
@@ -57,19 +56,18 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
     public async Task Publish_WithBinaryContentMode_HeadersPresent()
     {
         // Arrange - Override configuration for this test
-        var services = new ServiceCollection();
-        base.ConfigureServices(services);
-        services.AddRatatoskr(bus => 
+        await StartTestAsync(services =>
         {
-            bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
-            bus.AddEventPublishChannel(ExchangeName, c => c.Produces<TestEvent>())
-                .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Binary);
+            services.AddRatatoskr(bus => 
+            {
+                bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
+                bus.AddEventPublishChannel(ExchangeName, c => c.Produces<TestEvent>())
+                    .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Binary);
+            });
         });
         
-        var provider = services.BuildServiceProvider();
+        var provider = Services;
         var bus = provider.GetRequiredService<IRatatoskr>();
-        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
-        await topology.ProvisionTopologyAsync(CancellationToken.None);
 
         var queueName = $"pub-binary-{TestId}";
         await EnsureQueueBoundAsync(queueName, ExchangeName, DefaultRoutingKey);
@@ -94,19 +92,18 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
     public async Task Publish_WithStructuredContentMode_BodyStructureCorrect()
     {
         // Arrange
-        var services = new ServiceCollection();
-        base.ConfigureServices(services);
-        services.AddRatatoskr(bus => 
+        await StartTestAsync(services =>
         {
-            bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
-            bus.AddEventPublishChannel(ExchangeName, c => c.Produces<TestEvent>())
-                .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Structured);
+            services.AddRatatoskr(bus => 
+            {
+                bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
+                bus.AddEventPublishChannel(ExchangeName, c => c.Produces<TestEvent>())
+                    .ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Structured);
+            });
         });
 
-        var provider = services.BuildServiceProvider();
+        var provider = Services;
         var bus = provider.GetRequiredService<IRatatoskr>();
-        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
-        await topology.ProvisionTopologyAsync(CancellationToken.None);
 
         var queueName = $"pub-struct-{TestId}";
         await EnsureQueueBoundAsync(queueName, ExchangeName, DefaultRoutingKey);

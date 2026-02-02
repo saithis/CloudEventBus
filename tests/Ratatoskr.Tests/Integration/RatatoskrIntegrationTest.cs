@@ -2,18 +2,23 @@ using Microsoft.Extensions.DependencyInjection;
 using RabbitMQ.Client;
 using Ratatoskr.Tests.Fixtures;
 using System.Text;
+using Medallion.Threading;
+using Medallion.Threading.FileSystem;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Ratatoskr.RabbitMq;
 using TUnit.Core.Interfaces;
 
 namespace Ratatoskr.Tests.Integration;
 
 [ClassDataSource<RabbitMqContainerFixture, PostgresContainerFixture>(Shared = [SharedType.PerTestSession, SharedType.PerTestSession])]
 public abstract class RatatoskrIntegrationTest(RabbitMqContainerFixture rabbitMq, PostgresContainerFixture? postgres = null) 
-    : IAsyncInitializer, IAsyncDisposable
+    : IAsyncDisposable
 {
-    private ServiceProvider? _provider;
+    private WebApplicationFactory<Program>? _factory;
     private IServiceScope? _scope;
     
-    protected IServiceProvider Services => _scope?.ServiceProvider ?? throw new InvalidOperationException("Test not initialized");
+    // TODO: remove and create InScopeAsync
+    protected IServiceProvider Services => _scope?.ServiceProvider ?? throw new InvalidOperationException("Test not initialized. Did you forget to call StartTestAsync?");
     public RabbitMqContainerFixture RabbitMq => rabbitMq;
     public PostgresContainerFixture Postgres => postgres ?? throw new InvalidOperationException("Postgres not available");
 
@@ -35,15 +40,30 @@ public abstract class RatatoskrIntegrationTest(RabbitMqContainerFixture rabbitMq
     protected string TestId { get; } = Guid.NewGuid().ToString("N");
 
 
-    public virtual async Task InitializeAsync()
+    public virtual async Task StartTestAsync(Action<IServiceCollection>? configure = null)
     {
         await CreateDatabaseAsync();
 
-        var services = new ServiceCollection();
-        ConfigureServices(services);
-        
-        _provider = services.BuildServiceProvider();
-        _scope = _provider.CreateScope();
+        // Custom configuration for the factory if needed
+        _factory = new RatatoskrTestFactory(rabbitMq, postgres).WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                ConfigureServices(services);
+                configure?.Invoke(services);
+            });
+        });
+
+        // Create the scope from the factory's services
+        _scope = _factory.Services.CreateScope();
+
+        var topologyManager = _scope.ServiceProvider.GetService<RabbitMqTopologyManager>();
+        if (topologyManager != null)
+        {
+            // Wait for topology provisioning to complete
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await topologyManager.WaitForProvisioningAsync(cts.Token);
+        }
 
         await OnInitializedAsync();
     }
@@ -65,6 +85,10 @@ public abstract class RatatoskrIntegrationTest(RabbitMqContainerFixture rabbitMq
     {
         services.AddLogging();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
+
+        var lockFileDirectory = new DirectoryInfo(Path.Combine(Environment.CurrentDirectory, TestId)); // choose where the lock files will live
+        lockFileDirectory.Create();
+        services.AddSingleton<IDistributedLockProvider>(_ => new FileDistributedSynchronizationProvider(lockFileDirectory));
     }
 
     protected virtual Task OnInitializedAsync()
@@ -79,8 +103,8 @@ public abstract class RatatoskrIntegrationTest(RabbitMqContainerFixture rabbitMq
         else
             _scope?.Dispose();
 
-        if (_provider != null)
-            await _provider.DisposeAsync();
+        if (_factory != null)
+            await _factory.DisposeAsync();
             
         await OnDisposedAsync();
 

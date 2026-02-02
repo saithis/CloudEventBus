@@ -11,13 +11,30 @@ public class RabbitMqTopologyManager(
     RabbitMqConnectionManager connectionManager,
     ILogger<RabbitMqTopologyManager> logger)
 {
+    private readonly TaskCompletionSource _provisioningTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public Task WaitForProvisioningAsync(CancellationToken cancellationToken = default)
+    {
+        return _provisioningTcs.Task.WaitAsync(cancellationToken);
+    }
+
     public async Task ProvisionTopologyAsync(CancellationToken cancellationToken)
     {
-        await using var channel = await connectionManager.CreateChannelAsync(true, cancellationToken);
-
-        foreach (var reg in registry.GetAllChannels())
+        try
         {
-            await ProvisionChannelAsync(channel, reg, cancellationToken);
+            await using var channel = await connectionManager.CreateChannelAsync(true, cancellationToken);
+    
+            foreach (var reg in registry.GetAllChannels())
+            {
+                await ProvisionChannelAsync(channel, reg, cancellationToken);
+            }
+            
+            _provisioningTcs.TrySetResult();
+        }
+        catch (Exception ex)
+        {
+            _provisioningTcs.TrySetException(ex);
+            throw;
         }
     }
 

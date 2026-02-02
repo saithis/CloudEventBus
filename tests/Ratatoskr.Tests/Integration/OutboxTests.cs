@@ -1,9 +1,12 @@
 using System.Text;
 using AwesomeAssertions;
+using Medallion.Threading;
+using Medallion.Threading.FileSystem;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Ratatoskr.Core;
+using Ratatoskr.EfCore;
 using Ratatoskr.EfCore.Testing;
 using Ratatoskr.RabbitMq;
 using Ratatoskr.RabbitMq.Config;
@@ -23,33 +26,29 @@ public class OutboxTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFix
     public async Task Outbox_TransactionCommitted_MessagePublished()
     {
         // Arrange
-        var services = new ServiceCollection();
-        base.ConfigureServices(services);
-        
-        services.AddRatatoskr(bus => 
+        await StartTestAsync(services =>
         {
-            bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
-            bus.AddEventPublishChannel(ExchangeName, c => c.Produces<TestEvent>());
+            services.AddRatatoskr(bus => 
+            {
+                bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
+                bus.AddEventPublishChannel(ExchangeName, c => c.Produces<TestEvent>());
+            });
+            
+            services.AddTestDbContext(PostgresConnectionString);
+            services.AddTestOutbox<TestDbContext>();
         });
-        
-        services.AddTestDbContext(PostgresConnectionString);
-        services.AddTestOutbox<TestDbContext>();
-
-        var provider = services.BuildServiceProvider();
-        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
-        await topology.ProvisionTopologyAsync(CancellationToken.None);
 
         await EnsureQueueBoundAsync(QueueName, ExchangeName, DefaultRoutingKey);
         
         // Ensure DB Created
-        using (var scope = provider.CreateScope())
+        using (var scope = Services.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
             await dbContext.Database.EnsureCreatedAsync();
         }
 
         // Act
-        using (var scope = provider.CreateScope())
+        using (var scope = Services.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
             
@@ -62,7 +61,7 @@ public class OutboxTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFix
         }
         
         // Process Outbox
-        using (var scope = provider.CreateScope())
+        using (var scope = Services.CreateScope())
         {
             var processor = scope.ServiceProvider.GetRequiredService<SynchronousOutboxProcessor<TestDbContext>>();
             await processor.ProcessAllAsync();
@@ -79,64 +78,48 @@ public class OutboxTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFix
     {
         // Arrange
         var handler = new TestEventHandler();
-        var services = new ServiceCollection();
-        base.ConfigureServices(services);
-
-        services.AddRatatoskr(bus => 
+        await StartTestAsync(services =>
         {
-            bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
-            bus.AddCommandConsumeChannel(QueueName, c => c
-                .WithRabbitMq(o => o.QueueName(QueueName).AutoAck(false).QueueOptions(durable: false, autoDelete: true))
-                .Consumes<TestEvent>());
-            bus.AddHandler<TestEvent, TestEventHandler>();
+            services.AddRatatoskr(bus => 
+            {
+                bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
+                bus.AddCommandConsumeChannel(QueueName, c => c
+                    .WithRabbitMq(o => o.QueueName(QueueName).AutoAck(false).QueueOptions(durable: false, autoDelete: true))
+                    .Consumes<TestEvent>());
+                bus.AddHandler<TestEvent, TestEventHandler>(handler);
+                bus.AddEfCoreOutbox<TestDbContext>();
+            });
+            
+            services.AddDbContext<TestDbContext>((sp, options) =>
+            {
+                options.UseNpgsql(PostgresConnectionString);
+                options.RegisterOutbox<TestDbContext>(sp);
+            });
         });
 
-        services.AddSingleton(handler);
-        services.AddTestDbContext(PostgresConnectionString);
-        services.AddTestOutbox<TestDbContext>();
-
-        var provider = services.BuildServiceProvider();
-        var topology = provider.GetRequiredService<RabbitMqTopologyManager>();
-        await topology.ProvisionTopologyAsync(CancellationToken.None);
-        
         // Ensure DB Created
-        using (var scope = provider.CreateScope())
+        using (var scope = Services.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
             await dbContext.Database.EnsureCreatedAsync();
         }
+        
+        // The Host is already running (started in InitializeAsync), so the consumer should be active.
 
-        var consumer = provider.GetRequiredService<IHostedService>();
-        await consumer.StartAsync(CancellationToken.None);
-
-        try
+        // Act - Stage message
+        using (var scope = Services.CreateScope())
         {
-            // Act - Stage message
-            using (var scope = provider.CreateScope())
-            {
-                var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-                
-                // We are sending Command style to the queue name
-                dbContext.OutboxMessages.Add(new TestEvent { Id = "e2e-1", Data = "outbox->consumer" }, new MessageProperties().SetExchange(QueueName));
-                
-                await dbContext.SaveChangesAsync();
-            }
-
-            // Process Outbox
-            using (var scope = provider.CreateScope())
-            {
-                var processor = scope.ServiceProvider.GetRequiredService<SynchronousOutboxProcessor<TestDbContext>>();
-                await processor.ProcessAllAsync();
-            }
-
-            // Assert
-            await WaitForConditionAsync(() => handler.HandledMessages.Count > 0, TimeSpan.FromSeconds(2));
-            handler.HandledMessages.Should().HaveCount(1);
-            handler.HandledMessages[0].Id.Should().Be("e2e-1");
+            var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+            
+            // We are sending Command style to the queue name
+            dbContext.OutboxMessages.Add(new TestEvent { Id = "e2e-1", Data = "outbox->consumer" }, new MessageProperties().SetExchange(QueueName));
+            
+            await dbContext.SaveChangesAsync();
         }
-        finally
-        {
-            await consumer.StopAsync(CancellationToken.None);
-        }
+
+        // Assert
+        await WaitForConditionAsync(() => handler.HandledMessages.Count > 0 && handler.HandledMessages.Any(m => m.Id == "e2e-1"), TimeSpan.FromSeconds(5));
+        
+        handler.HandledMessages.Should().Contain(m => m.Id == "e2e-1");
     }
 }

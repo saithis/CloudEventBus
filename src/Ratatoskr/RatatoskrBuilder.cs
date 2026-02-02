@@ -62,4 +62,17 @@ public class RatatoskrBuilder
         
         return this;
     }
+    
+    /// <summary>
+    /// Registers a message handler.
+    /// </summary>
+    public RatatoskrBuilder AddHandler<TMessage, THandler>(THandler handler)
+        where TMessage : notnull
+        where THandler : class, IMessageHandler<TMessage>
+    {
+        Services.AddSingleton<THandler>(handler);
+        Services.AddSingleton<IMessageHandler<TMessage>>(handler);
+        
+        return this;
+    }
 }
