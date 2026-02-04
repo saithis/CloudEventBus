@@ -227,4 +227,87 @@ public class TestAssertionsTests
         var result = sender.ShouldHaveSent<TestEvent>();
         result.Should().NotBeNull();
     }
+
+    [Test]
+    public async Task WaitForSentAsync_WhenMessageSentAfterWait_ReturnsMessage()
+    {
+        // Arrange
+        var sender = new InMemoryMessageSender();
+        var testEvent = new TestEvent { Id = "deferred", Data = "data" };
+        var serialized = JsonSerializer.SerializeToUtf8Bytes(testEvent);
+
+        // Act - Start waiting
+        // We use a small delay in the predicate to ensure we are actually waiting
+        var waitTask = sender.WaitForSentAsync<TestEvent>(e => e.Id == "deferred", TimeSpan.FromSeconds(2));
+        
+        // Act - Send message
+        // Small delay to ensure verify the task didn't complete synchronously incorrectly
+        await Task.Delay(20); 
+        await sender.SendAsync(serialized, new MessageProperties { Type = "test.event" }, CancellationToken.None);
+        
+        // Assert
+        var result = await waitTask;
+        result.Should().NotBeNull();
+        var deserialized = result.Deserialize<TestEvent>();
+        deserialized!.Id.Should().Be("deferred");
+    }
+
+    [Test]
+    public void WaitForSentAsync_WhenTimeoutMatches_ThrowsTimeoutException()
+    {
+        // Arrange
+        var sender = new InMemoryMessageSender();
+        
+        // Act
+        Func<Task> act = async () => await sender.WaitForSentAsync<TestEvent>(
+            timeout: TimeSpan.FromMilliseconds(50));
+
+        // Assert
+        act.Should().ThrowAsync<TimeoutException>();
+    }
+
+    [Test]
+    public async Task ShouldHaveSentCount_Typed_WithCorrectCount_Succeeds()
+    {
+         // Arrange
+        var sender = CreateSenderWithRegistry();
+        
+        var event1 = new OrderCreatedEvent { OrderId = "A" };
+        var event2 = new OrderCreatedEvent { OrderId = "B" };
+        var otherEvent = new TestEvent { Data = "other" };
+
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event1), 
+            new MessageProperties { Type = "order.created" }, CancellationToken.None);
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(otherEvent), 
+            new MessageProperties { Type = "test.event" }, CancellationToken.None);
+        await sender.SendAsync(JsonSerializer.SerializeToUtf8Bytes(event2), 
+            new MessageProperties { Type = "order.created" }, CancellationToken.None);
+
+        // Act & Assert
+        sender.ShouldHaveSentCount<OrderCreatedEvent>(2);
+        sender.ShouldHaveSentCount<TestEvent>(1);
+    }
+    
+    [Test]
+    public async Task ShouldHaveSent_WithCustomJsonOptions_DeserializesCorrectly()
+    {
+        // Arrange
+        var sender = new InMemoryMessageSender();
+        // Send JSON with lowercase property "data"
+        var json = "{\"data\": \"value\"}"; 
+        
+        // Default deserialization of TestEvent.Data (PascalCase) would fail to map "data" (lowercase) 
+        // because default options are case-sensitive.
+        await sender.SendAsync(System.Text.Encoding.UTF8.GetBytes(json), 
+             new MessageProperties { Type = "test.event" }, CancellationToken.None);
+
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+        // Act
+        var result = sender.ShouldHaveSent<TestEvent>(predicate: e => e.Data == "value", options: options);
+         
+        // Assert
+        // Verify we can also deserialize explicitly with options
+        result.Deserialize<TestEvent>(options)!.Data.Should().Be("value");
+    }
 }

@@ -17,7 +17,8 @@ public static class TestAssertions
     /// </summary>
     public static SentMessage ShouldHaveSent<TMessage>(
         this InMemoryMessageSender sender,
-        Func<TMessage, bool>? predicate = null)
+        Func<TMessage, bool>? predicate = null,
+        JsonSerializerOptions? options = null)
     {
         var matching = sender.SentMessages
             .Where(m => MatchesType<TMessage>(m, sender.Registry))
@@ -33,7 +34,7 @@ public static class TestAssertions
         if (predicate != null)
         {
             var withPredicate = matching
-                .Where(m => predicate(m.Deserialize<TMessage>()!))
+                .Where(m => predicate(m.Deserialize<TMessage>(options)!))
                 .ToList();
             
             if (withPredicate.Count == 0)
@@ -76,6 +77,20 @@ public static class TestAssertions
                 $"Expected {expectedCount} message(s) to be sent, but found {actualCount}.");
         }
     }
+
+    /// <summary>
+    /// Asserts that exactly the specified number of messages of the specified type were sent.
+    /// </summary>
+    public static void ShouldHaveSentCount<TMessage>(this InMemoryMessageSender sender, int expectedCount)
+    {
+        var matching = sender.SentMessages.Where(m => MatchesType<TMessage>(m, sender.Registry)).ToList();
+        
+        if (matching.Count != expectedCount)
+        {
+            throw new AssertionException(
+                $"Expected {expectedCount} message(s) of type {typeof(TMessage).Name} to be sent, but found {matching.Count}.");
+        }
+    }
     
     /// <summary>
     /// Asserts that no messages were sent.
@@ -92,60 +107,52 @@ public static class TestAssertions
     {
         return sender.SentMessages.Where(m => MatchesType<TMessage>(m, sender.Registry)).ToList();
     }
+
+    /// <summary>
+    /// Waits for a message of the specified type to be sent.
+    /// </summary>
+    public static async Task<SentMessage> WaitForSentAsync<TMessage>(
+        this InMemoryMessageSender sender, 
+        Func<TMessage, bool>? predicate = null,
+        TimeSpan? timeout = null,
+        JsonSerializerOptions? options = null)
+    {
+        return await sender.WaitForMessageAsync(m => 
+        {
+            if (!MatchesType<TMessage>(m, sender.Registry)) return false;
+            if (predicate == null) return true;
+            
+            var item = m.Deserialize<TMessage>(options);
+            return item != null && predicate(item);
+        }, timeout);
+    }
     
     private static bool MatchesType<TMessage>(SentMessage message, ChannelRegistry? registry)
     {
         var type = typeof(TMessage);
+        string? expectedTypeName = null;
         
         // 1. Check registry first if available
         var messageRegistration = registry?.FindPublishChannelForMessage(type)?.GetMessage(type);
-        if (messageRegistration != null && 
-            message.Properties.Type?.Equals(messageRegistration.MessageTypeName, StringComparison.OrdinalIgnoreCase) == true)
+        if (messageRegistration != null)
         {
-            return true;
+            expectedTypeName = messageRegistration.MessageTypeName;
+        }
+        
+        // 2. Fallback to CloudEvent attribute if not found in registry (or registry missing)
+        if (expectedTypeName == null)
+        {
+            var messageAttribute = type.GetCustomAttribute<RatatoskrMessageAttribute>();
+            expectedTypeName = messageAttribute?.Type;
         }
 
-        // 2. Check for CloudEvent attribute
-        var messageAttribute = type.GetCustomAttribute<RatatoskrMessageAttribute>();
-        if (messageAttribute != null)
+        if (expectedTypeName != null)
         {
-            // Exact match on the declared message type
-            if (message.Properties.Type?.Equals(messageAttribute.Type, StringComparison.OrdinalIgnoreCase) == true)
-            {
-                return true;
-            }
+             return message.Properties.Type?.Equals(expectedTypeName, StringComparison.OrdinalIgnoreCase) == true;
         }
         
-        // 3. Check if it's a CloudEvents envelope (structured mode)
-        try
-        {
-            var envelope = JsonSerializer.Deserialize<CloudEventEnvelope>(message.Content);
-            if (envelope?.Type != null)
-            {
-                // If the envelope type matches attribute OR class name
-                if (messageAttribute != null && envelope.Type.Equals(messageAttribute.Type, StringComparison.OrdinalIgnoreCase))
-                    return true;
-                
-                // If registry knows the type, check against that too
-                messageRegistration = registry?.FindPublishChannelForTypeName(envelope.Type)?.GetMessage(envelope.Type);
-                if (messageRegistration != null && 
-                    envelope.Type.Equals(messageRegistration.MessageTypeName, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-                    
-                return false;
-            }
-        }
-        catch
-        {
-            // Not a CloudEvents envelope, continue with other checks
-        }
-        
-        // We can't determine if it matches just by looking at content because JSON deserialization 
-        // is too permissive (it will deserialize anything into an empty object).
-        // If we don't have type information in the envelope or properties, we should assume it doesn't match
-        // rather than giving a false positive.
+        // If we can't determine the expected type, we can't match it reliably.
+        // We avoid sniffing the JSON content to prevent false positives and hidden bugs.
         return false;
     }
 }
