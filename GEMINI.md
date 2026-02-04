@@ -1,10 +1,19 @@
 
+# General
+
+* Always write tests for new code
+* Prefer integration tests over unit tests
+* Keep documentation in sync with code
+* Use TUnit for tests
+
 # Tests
 ## Running all tests
 `dotnet run --project tests/Ratatoskr.Tests/Ratatoskr.Tests.csproj`
 
 ## Running filtered tests
 `dotnet run --project tests/Ratatoskr.Tests/Ratatoskr.Tests.csproj -- --treenode-filter "/<Assembly>/<Namespace>/<Class name>/<Test name>"` (without the angled brackets)
+
+Example: `dotnet run --project tests/Ratatoskr.Tests/Ratatoskr.Tests.csproj -- --treenode-filter "/*/*/OutboxTests/*"`
 
 ### Filter Operators
 
