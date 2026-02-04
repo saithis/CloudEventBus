@@ -10,8 +10,6 @@ using Ratatoskr;
 using Ratatoskr.Core;
 using Ratatoskr.EfCore;
 using Ratatoskr.EfCore.Internal;
-using Ratatoskr.EfCore.Testing;
-using Ratatoskr.RabbitMq;
 using Ratatoskr.Testing;
 
 namespace Ratatoskr.Tests.Fixtures;
@@ -51,9 +49,6 @@ public static class ServiceCollectionExtensions
         
         // Register options
         services.AddSingleton(Options.Create(builder.Options));
-        
-        // Add synchronous processor for explicit test control
-        services.AddSynchronousOutboxProcessor<TDbContext>();
         
         return services;
     }
