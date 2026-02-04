@@ -1,4 +1,4 @@
-# CloudEventBus
+# Ratatoskr
 
 ## Goals
 
@@ -10,17 +10,17 @@
 - Good Observability
 - Easy to test
 
-## Saithis.CloudEventBus:
+## Ratatoskr:
 
 - Generic implementation of event/message sending/receiving
 - Support for different message serializers with a default one and overwritable per message
 - Support for multiple handlers of the same message
 
-## Saithis.CloudEventBus.RabbitMq:
+## Ratatoskr.RabbitMq:
 
 - RabbitMq implementations for sending, receiving and CloudEvents mapping
 
-## Saithis.CloudEventBus.EfCore:
+## Ratatoskr.EfCore:
 
 - Implements the Outbox pattern via EfCore 
 - Exceptional developer experience

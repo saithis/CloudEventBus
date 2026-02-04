@@ -22,9 +22,9 @@ namespace Ratatoskr.Tests.Fixtures;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Adds CloudEventBus with InMemoryMessageSender for testing
+    /// Adds Ratatoskr with InMemoryMessageSender for testing
     /// </summary>
-    public static IServiceCollection AddTestCloudEventBus(
+    public static IServiceCollection AddTestRatatoskr(
         this IServiceCollection services,
         Action<RatatoskrBuilder>? configure = null)
     {

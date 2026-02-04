@@ -1,4 +1,4 @@
-# CloudEventBus
+# Ratatoskr
 
 A modern .NET library for reliable event/message publishing using the outbox pattern with CloudEvents support.
 
@@ -32,19 +32,19 @@ See [examples/AppHost/README.md](examples/AppHost/README.md) for more details.
 
 ## Project Structure
 
-- `src/Saithis.CloudEventBus` - Core library
-- `src/Saithis.CloudEventBus.EfCoreOutbox` - Entity Framework Core outbox pattern implementation
-- `src/Saithis.CloudEventBus.RabbitMq` - RabbitMQ message sender
+- `src/Ratatoskr` - Core library
+- `src/Ratatoskr.EfCoreOutbox` - Entity Framework Core outbox pattern implementation
+- `src/Ratatoskr.RabbitMq` - RabbitMQ message sender
 - `examples/PlaygroundApi` - Example API application
 - `examples/AppHost` - .NET Aspire orchestration
-- `tests/CloudEventBus.Tests` - Integration and unit tests
+- `tests/Ratatoskr.Tests` - Integration and unit tests
 
 ## Testing
 
 The project includes comprehensive tests using TUnit and TestContainers:
 
 ```bash
-cd tests/CloudEventBus.Tests
+cd tests/Ratatoskr.Tests
 dotnet run
 ```
 

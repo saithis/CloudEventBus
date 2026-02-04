@@ -15,7 +15,7 @@ public class RatatoskrTests
     {
         // Arrange
         var services = new ServiceCollection();
-        services.AddTestCloudEventBus(bus => bus
+        services.AddTestRatatoskr(bus => bus
             .AddEventPublishChannel("order", c => c.Produces<OrderCreatedEvent>()));
         
         var provider = services.BuildServiceProvider();
@@ -41,7 +41,7 @@ public class RatatoskrTests
     {
         // Arrange
         var services = new ServiceCollection();
-        services.AddTestCloudEventBus();
+        services.AddTestRatatoskr();
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<IRatatoskr>();
@@ -61,7 +61,7 @@ public class RatatoskrTests
     {
         // Arrange
         var services = new ServiceCollection();
-        services.AddTestCloudEventBus();
+        services.AddTestRatatoskr();
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<IRatatoskr>();
@@ -90,7 +90,7 @@ public class RatatoskrTests
     {
         // Arrange
         var services = new ServiceCollection();
-        services.AddTestCloudEventBus(bus => bus
+        services.AddTestRatatoskr(bus => bus
             .AddEventPublishChannel("test", c => c.Produces<TestEvent>(m => m
                 .WithRoutingKey("routeKey"))));
         
@@ -113,7 +113,7 @@ public class RatatoskrTests
     {
         // Arrange
         var services = new ServiceCollection();
-        services.AddTestCloudEventBus();
+        services.AddTestRatatoskr();
         
         var provider = services.BuildServiceProvider();
         var bus = provider.GetRequiredService<IRatatoskr>();

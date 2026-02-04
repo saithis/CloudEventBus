@@ -20,7 +20,7 @@ public class OutboxIntegrationTests(PostgresContainerFixture postgres)
         // Arrange
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddTestCloudEventBus(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
+        services.AddTestRatatoskr(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
         services.AddTestDbContext(postgres.ConnectionString);
         services.AddTestOutbox<TestDbContext>();
         
@@ -65,7 +65,7 @@ public class OutboxIntegrationTests(PostgresContainerFixture postgres)
         // Arrange
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddTestCloudEventBus(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
+        services.AddTestRatatoskr(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
         services.AddTestDbContext(postgres.ConnectionString);
         services.AddTestOutbox<TestDbContext>();
         
@@ -120,7 +120,7 @@ public class OutboxIntegrationTests(PostgresContainerFixture postgres)
         
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(fakeTime);
-        services.AddTestCloudEventBus(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
+        services.AddTestRatatoskr(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
         services.AddTestDbContext(postgres.ConnectionString);
         services.AddTestOutbox<TestDbContext>();
         
@@ -214,7 +214,7 @@ public class OutboxIntegrationTests(PostgresContainerFixture postgres)
         
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(fakeTime);
-        services.AddTestCloudEventBus(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
+        services.AddTestRatatoskr(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
         services.AddTestDbContext(postgres.ConnectionString);
         services.AddTestOutbox<TestDbContext>(outbox => outbox.WithMaxRetries(3));
         services.AddSingleton<global::Ratatoskr.Core.IMessageSender>(alwaysFailingSender);
@@ -275,7 +275,7 @@ public class OutboxIntegrationTests(PostgresContainerFixture postgres)
         // Arrange
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddTestCloudEventBus(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
+        services.AddTestRatatoskr(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
         services.AddTestDbContext(postgres.ConnectionString);
         services.AddTestOutbox<TestDbContext>();
         
@@ -326,7 +326,7 @@ public class OutboxIntegrationTests(PostgresContainerFixture postgres)
         // Arrange
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
-        services.AddTestCloudEventBus(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
+        services.AddTestRatatoskr(bus => bus.AddEventPublishChannel("test", c => c.Produces<TestEvent>()));
         services.AddTestDbContext(postgres.ConnectionString);
         services.AddTestOutbox<TestDbContext>(outbox => outbox.WithBatchSize(2)); // Small batch
         

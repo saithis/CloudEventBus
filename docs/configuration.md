@@ -18,12 +18,12 @@
 
 ## API Design: Channel-First
 
-Everything happens inside `AddCloudEventBus`.
+Everything happens inside `AddRatatoskr`.
 
 ### Configuration Example
 
 ```csharp
-services.AddCloudEventBus(builder => 
+services.AddRatatoskr(builder => 
 {
     builder.WithServiceName("OrderService");
     
@@ -43,7 +43,7 @@ services.AddCloudEventBus(builder =>
            .WithRabbitMq(cfg => cfg
                .ExchangeType(ExchangeType.Topic)               
            )
-           // Default Routing Key: Uses [CloudEvent("type")] or typeof(T).Name
+           // Default Routing Key: Uses [RatatoskrMessage("type")] or typeof(T).Name
            .Produces<OrderCreated>() 
            // Overridden Routing Key
            .Produces<OrderCancelled>(cfg => cfg.WithRoutingKey("order.cancelled"));
@@ -89,14 +89,14 @@ services.AddCloudEventBus(builder =>
 
 ### Attributes
 
-Instead of specifying the type via `WithType`, you can also use `[CloudEvent("type")]` to identify messages.
+Instead of specifying the type via `WithType`, you can also use `[RatatoskrMessage("type")]` to identify messages.
 
 ```csharp
-[CloudEvent("order.created")]
+[RatatoskrMessage("order.created")]
 public record OrderCreated(string OrderId);
 ```
 
 ## Registry Architecture
 
 ### 1. ChannelRegistry
-The root container that holds all the channel information, which in turn hold all the message informations. This is populated from the `AddCloudEventBus` configuration.
+The root container that holds all the channel information, which in turn hold all the message informations. This is populated from the `AddRatatoskr` configuration.

@@ -1,6 +1,6 @@
 # Documentation Guidelines
 
-This directory contains the user-facing documentation for CloudEventBus.
+This directory contains the user-facing documentation for Ratatoskr.
 
 ## Structure
 

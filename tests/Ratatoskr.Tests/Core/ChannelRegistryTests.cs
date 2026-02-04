@@ -43,7 +43,7 @@ public class ChannelRegistryTests
         builder.AddEventPublishChannel("local.events", cfg => cfg.Produces<TestEvent>());
 
         // Act
-        var typeName = "test.event"; // Matches [CloudEvent("test.event")] in TestMessages.cs
+        var typeName = "test.event"; // Matches [RatatoskrMessage("test.event")] in TestMessages.cs
         
         var channel = builder.ChannelRegistry.FindPublishChannelForTypeName(typeName);
 

@@ -152,13 +152,13 @@ using (var scope = provider.CreateScope())
 
 ```csharp
 using AwesomeAssertions;
-using CloudEventBus.Tests.Fixtures;
+using Ratatoskr.Tests.Fixtures;
 using Microsoft.Extensions.DependencyInjection;
-using Saithis.CloudEventBus;
-using Saithis.CloudEventBus.Testing;
+using Ratatoskr;
+using Ratatoskr.Testing;
 using TUnit.Core;
 
-namespace CloudEventBus.Tests.Core;
+namespace Ratatoskr.Tests.Core;
 
 public class ExampleTests
 {
@@ -167,11 +167,11 @@ public class ExampleTests
     {
         // Arrange
         var services = new ServiceCollection();
-        services.AddTestCloudEventBus(bus => bus
+        services.AddTestRatatoskr(bus => bus
             .AddMessage<TestEvent>("test.event"));
         
         var provider = services.BuildServiceProvider();
-        var bus = provider.GetRequiredService<ICloudEventBus>();
+        var bus = provider.GetRequiredService<IRatatoskr>();
         var sender = provider.GetRequiredService<InMemoryMessageSender>();
         
         // Act

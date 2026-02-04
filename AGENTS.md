@@ -13,7 +13,7 @@ collection.Should().HaveCount(5);
 act.Should().Throw<InvalidOperationException>();
 ```
 
-See `tests/CloudEventBus.Tests/AGENTS.md` for detailed testing instructions.
+See `tests/Ratatoskr.Tests/AGENTS.md` for detailed testing instructions.
 
 ---
 
