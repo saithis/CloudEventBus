@@ -18,13 +18,9 @@ public class RabbitMqMessageSender(
         
         var basicProps = new BasicProperties();
         
-        // Try to extract parent context from headers (important for Outbox or existing traces)
-        ActivityContext.TryParse(props.TraceParent, props.TraceState, out var parentContext);
-
         using var activity = RatatoskrDiagnostics.ActivitySource.StartActivity(
             "Ratatoskr.Send", 
-            ActivityKind.Client, 
-            parentContext);
+            ActivityKind.Client);
 
         if (activity != null)
         {

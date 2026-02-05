@@ -46,7 +46,8 @@ public static class ServiceDefaults
             .WithTracing(tracing =>
             {
                 tracing.AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation();
+                    .AddHttpClientInstrumentation()
+                    .AddSource("Ratatoskr");
             });
 
         builder.AddOpenTelemetryExporters();

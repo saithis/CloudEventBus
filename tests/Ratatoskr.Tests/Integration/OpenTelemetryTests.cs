@@ -56,7 +56,8 @@ public class OpenTelemetryTests(RabbitMqContainerFixture rabbitMq, PostgresConta
         {
             var dbContext = ctx.ServiceProvider.GetRequiredService<TestDbContext>();
             // Use Outbox explicitly
-            dbContext.OutboxMessages.Add(new TestEvent { Id = eventId, Data = "trace-me" }, new MessageProperties { Id = eventId });
+            var initialTraceParent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+            dbContext.OutboxMessages.Add(new TestEvent { Id = eventId, Data = "trace-me" }, new MessageProperties { Id = eventId, TraceParent = initialTraceParent });
             await dbContext.SaveChangesAsync();
         });
 
