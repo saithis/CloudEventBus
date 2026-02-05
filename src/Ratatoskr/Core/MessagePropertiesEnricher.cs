@@ -20,9 +20,18 @@ public class MessagePropertiesEnricher(ChannelRegistry registry, CloudEventsOpti
         properties.Time ??= timeProvider.GetUtcNow();
         properties.Source ??= options.DefaultSource;
         
+        var activity = System.Diagnostics.Activity.Current;
+        if (activity != null)
+        {
+            properties.TraceParent = activity.Id;
+            if (!string.IsNullOrEmpty(activity.TraceStateString))
+            {
+                properties.TraceState = activity.TraceStateString;
+            }
+        }
+        
         // Query registry for type info
         var publishInfo = registry.GetPublishInformation(messageType);
-        
         if (publishInfo == null)
         {
             // If not in registry, try to deduce type from attribute

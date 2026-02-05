@@ -7,14 +7,10 @@
 1. Observabillity
 
     - metrics
-    - traces
 
 1. Testing
 
     - Make it easy for users to write tests for sending/receiving events/messages
-    - InMemoryMessageSender that collects messages for assertions
-    - FakeOutboxProcessor that processes synchronously for tests
-    - Test helpers like bus.ShouldHavePublished<T>(predicate)
 
 1. Tests
 

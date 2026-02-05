@@ -24,7 +24,13 @@ public class RabbitMqTopologyManager(
         {
             await using var channel = await connectionManager.CreateChannelAsync(true, cancellationToken);
     
-            foreach (var reg in registry.GetAllChannels())
+            // Publish channels first, to make sure they are declared if consume channels want to bind to them
+            foreach (var reg in registry.GetPublishChannels())
+            {
+                await ProvisionChannelAsync(channel, reg, cancellationToken);
+            }
+            
+            foreach (var reg in registry.GetConsumeChannels())
             {
                 await ProvisionChannelAsync(channel, reg, cancellationToken);
             }

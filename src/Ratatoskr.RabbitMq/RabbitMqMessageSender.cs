@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using RabbitMQ.Client;
 using Ratatoskr.Core;
 using Ratatoskr.RabbitMq.Config;
@@ -17,6 +18,29 @@ public class RabbitMqMessageSender(
         
         var basicProps = new BasicProperties();
         
+        // Try to extract parent context from headers (important for Outbox or existing traces)
+        ActivityContext.TryParse(props.TraceParent, props.TraceState, out var parentContext);
+
+        using var activity = RatatoskrDiagnostics.ActivitySource.StartActivity(
+            "Ratatoskr.Send", 
+            ActivityKind.Client, 
+            parentContext);
+
+        if (activity != null)
+        {
+            // Inject current trace context into headers for propagation
+            props.TraceParent = activity.Id;
+            props.TraceState = activity.TraceStateString;
+            
+            // https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/#messaging-attributes
+            // https://opentelemetry.io/docs/specs/semconv/messaging/rabbitmq/
+            activity.SetTag("messaging.system", "rabbitmq");
+            activity.SetTag("messaging.destination.name", props.GetExchange());
+            activity.SetTag("messaging.rabbitmq.destination.routing_key", props.GetRoutingKey() ?? props.Type);
+            activity.SetTag("messaging.message.id", props.Id);
+            activity.SetTag("messaging.message.body.size", content.Length);
+        }
+
         // Use envelope mapper to map properties and potentially wrap content
         var bodyToSend = envelopeMapper.MapOutgoing(content, props, basicProps);
         

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ratatoskr.Core;
@@ -64,8 +65,25 @@ internal class OutboxMessageProcessor<TDbContext>(
         {
             try
             {
+                var props = message.GetProperties();
+                
+                // Extract parent tracing context
+                ActivityContext.TryParse(props.TraceParent, props.TraceState, out var parentContext);
+
+                using var activity = RatatoskrDiagnostics.ActivitySource.StartActivity(
+                    "Ratatoskr.OutboxProcess", 
+                    ActivityKind.Producer, 
+                    parentContext);
+                
+                if (activity != null)
+                {
+                    // https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/#messaging-attributes
+                    activity.SetTag("messaging.system", "ratatoskr");
+                    activity.SetTag("messaging.message.id", props.Id);
+                }
+
                 logger.LogInformation("Processing message '{Id}'", message.Id);
-                await sender.SendAsync(message.Content, message.GetProperties(), cancellationToken);
+                await sender.SendAsync(message.Content, props, cancellationToken);
                 message.MarkAsProcessed(timeProvider);
                 processedCount++;
             }

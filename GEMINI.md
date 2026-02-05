@@ -6,7 +6,21 @@
 * Keep documentation in sync with code
 * Use TUnit for tests
 
-# Tests
+## Testing
+
+This project uses **TUnit** as the test framework and **AwesomeAssertions** for assertions.
+
+**IMPORTANT**: AwesomeAssertions is a fork of FluentAssertions. Except for the using statement, the API is **identical** to FluentAssertions.
+
+```csharp
+// Use AwesomeAssertions (FluentAssertions API)
+result.Should().Be(expected);
+collection.Should().HaveCount(5);
+act.Should().Throw<InvalidOperationException>();
+```
+
+See `tests/Ratatoskr.Tests/AGENTS.md` for detailed testing instructions.
+
 ## Running all tests
 `dotnet run --project tests/Ratatoskr.Tests/Ratatoskr.Tests.csproj`
 

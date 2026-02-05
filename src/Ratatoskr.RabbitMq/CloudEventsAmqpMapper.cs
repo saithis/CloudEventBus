@@ -48,8 +48,6 @@ public class CloudEventsAmqpMapper(
     
     public (byte[] body, MessageProperties props) MapIncoming(BasicDeliverEventArgs incoming)
     {
-        var incomingHeaders = incoming.BasicProperties.Headers ?? new Dictionary<string, object?>();
-        
         // Detect content mode based on content type
         var contentType = incoming.BasicProperties.ContentType;
         var isStructured = contentType?.StartsWith(CloudEventsAmqpConstants.JsonContentType, 
@@ -111,11 +109,17 @@ public class CloudEventsAmqpMapper(
             }
         }
         
-        // Handle trace propagation (if available from props.Headers)
-        if (props.Headers.TryGetValue(CloudEventsAmqpConstants.TraceParentHeader, out var traceParent))
+        // Handle trace propagation
+        if (!string.IsNullOrEmpty(props.TraceParent))
         {
-            outgoing.Headers[CloudEventsAmqpConstants.TraceParentHeader] = traceParent;
-            SetCloudEventHeader(outgoing.Headers, "traceparent", traceParent);
+            outgoing.Headers[CloudEventsAmqpConstants.TraceParentHeader] = props.TraceParent;
+            SetCloudEventHeader(outgoing.Headers, "traceparent", props.TraceParent);
+        }
+        
+        if (!string.IsNullOrEmpty(props.TraceState))
+        {
+            outgoing.Headers[CloudEventsAmqpConstants.TraceStateHeader] = props.TraceState;
+            SetCloudEventHeader(outgoing.Headers, "tracestate", props.TraceState);
         }
         
         return serializedData;
@@ -172,6 +176,19 @@ public class CloudEventsAmqpMapper(
             }
         }
         
+        // Handle trace propagation for structured mode too (as AMQP headers)
+        if (!string.IsNullOrEmpty(props.TraceParent))
+        {
+            outgoing.Headers ??= new Dictionary<string, object?>();
+            outgoing.Headers[CloudEventsAmqpConstants.TraceParentHeader] = props.TraceParent;
+        }
+        
+        if (!string.IsNullOrEmpty(props.TraceState))
+        {
+            outgoing.Headers ??= new Dictionary<string, object?>();
+            outgoing.Headers[CloudEventsAmqpConstants.TraceStateHeader] = props.TraceState;
+        }
+        
         return envelopeBytes;
     }
     
@@ -181,20 +198,20 @@ public class CloudEventsAmqpMapper(
         
         // Prefer standard RabbitMQ properties over CloudEvents headers (Wolverine compatibility)
         var id = incoming.BasicProperties.MessageId 
-                 ?? GetCloudEventHeader(incomingHeaders, "id") 
+                 ?? GetCloudEventHeader(incomingHeaders, CloudEventsAmqpConstants.IdHeader) 
                  ?? Guid.NewGuid().ToString();
         
         var type = incoming.BasicProperties.Type
-                   ?? GetCloudEventHeader(incomingHeaders, "type")
+                   ?? GetCloudEventHeader(incomingHeaders, CloudEventsAmqpConstants.TypeHeader)
                    ?? "";
         
         var source = incoming.BasicProperties.AppId
-                     ?? GetCloudEventHeader(incomingHeaders, "source")
+                     ?? GetCloudEventHeader(incomingHeaders, CloudEventsAmqpConstants.SourceHeader)
                      ?? "/";
         
         // Parse time from CloudEvents header if available
         DateTimeOffset? time = null;
-        var timeStr = GetCloudEventHeader(incomingHeaders, "time");
+        var timeStr = GetCloudEventHeader(incomingHeaders, CloudEventsAmqpConstants.TimeHeader);
         if (timeStr != null && DateTimeOffset.TryParse(timeStr, out var parsedTime))
         {
             time = parsedTime;
@@ -205,20 +222,26 @@ public class CloudEventsAmqpMapper(
         }
         
         var contentType = incoming.BasicProperties.ContentType
-                         ?? GetCloudEventHeader(incomingHeaders, "datacontenttype");
+                         ?? GetCloudEventHeader(incomingHeaders, CloudEventsAmqpConstants.DataContentTypeHeader);
         
-        var subject = GetCloudEventHeader(incomingHeaders, "subject");
+        var subject = GetCloudEventHeader(incomingHeaders, CloudEventsAmqpConstants.SubjectHeader);
+        
+        // Extract trace context (prefer standard W3C headers, fallback to CloudEvents attributes)
+        var traceParent = incomingHeaders.TryGetValue("traceparent", out var tp) 
+            ? ConvertToString(tp) 
+            : GetCloudEventHeader(incomingHeaders, CloudEventsAmqpConstants.TraceParentHeader);
+            
+        var traceState = incomingHeaders.TryGetValue("tracestate", out var ts)
+            ? ConvertToString(ts) 
+            : GetCloudEventHeader(incomingHeaders, CloudEventsAmqpConstants.TraceParentHeader);
         
         // Build headers dictionary (include all headers)
         var headers = new Dictionary<string, string>();
-        if (incomingHeaders != null)
+        foreach (var header in incomingHeaders)
         {
-            foreach (var header in incomingHeaders)
-            {
-                headers[header.Key] = ConvertToString(header.Value);
-            }
+            headers[header.Key] = ConvertToString(header.Value);
         }
-        
+
         var props = new MessageProperties
         {
             Id = id,
@@ -227,7 +250,9 @@ public class CloudEventsAmqpMapper(
             Time = time,
             ContentType = contentType,
             Subject = subject,
-            Headers = headers
+            Headers = headers,
+            TraceParent = traceParent,
+            TraceState = traceState,
         };
         
         return (incoming.Body.ToArray(), props);
@@ -254,6 +279,18 @@ public class CloudEventsAmqpMapper(
             dataBytes = Array.Empty<byte>();
         }
         
+        var incomingHeaders = incoming.BasicProperties.Headers ?? new Dictionary<string, object?>();
+        if (!cloudEvent.TryGetExtension<string>(CloudEventsAmqpConstants.TraceParentHeader, out string? traceParent))
+        {
+            traceParent = incomingHeaders.TryGetValue("traceparent", out var tp) 
+                ? ConvertToString(tp) : null;
+        }
+        if (!cloudEvent.TryGetExtension<string>(CloudEventsAmqpConstants.TraceStateHeader, out string? traceState))
+        {
+            traceState = incomingHeaders.TryGetValue("tracestate", out var ts) 
+                ? ConvertToString(ts) : null;
+        }
+
         var props = new MessageProperties
         {
             Id = cloudEvent.Id,
@@ -261,7 +298,9 @@ public class CloudEventsAmqpMapper(
             Source = cloudEvent.Source,
             Time = cloudEvent.Time,
             ContentType = cloudEvent.DataContentType ?? "application/json",
-            Subject = cloudEvent.Subject
+            Subject = cloudEvent.Subject,
+            TraceParent = traceParent,
+            TraceState = traceState,
         };
         
         // Copy extensions to CloudEventExtensions

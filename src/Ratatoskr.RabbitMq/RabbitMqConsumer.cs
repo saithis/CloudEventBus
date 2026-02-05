@@ -88,6 +88,26 @@ internal class RabbitMqConsumer(
             // Use envelope mapper to extract body and properties
             var (body, props) = envelopeMapper.MapIncoming(ea);
             
+            // Extract parent context for tracing
+            ActivityContext.TryParse(props.TraceParent, props.TraceState, out var parentContext);
+
+            using var activity = RatatoskrDiagnostics.ActivitySource.StartActivity(
+                "Ratatoskr.Receive", 
+                ActivityKind.Consumer, 
+                parentContext);
+
+            if (activity != null)
+            {
+                // https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/#messaging-attributes
+                // https://opentelemetry.io/docs/specs/semconv/messaging/rabbitmq/
+                activity.SetTag("messaging.system", "rabbitmq");
+                activity.SetTag("messaging.destination.subscription.name", queueName);
+                activity.SetTag("messaging.destination.name", ea.Exchange);
+                activity.SetTag("messaging.rabbitmq.destination.routing_key", ea.RoutingKey);
+                activity.SetTag("messaging.message.id", props.Id);
+                activity.SetTag("messaging.message.body.size", body.Length);
+            }
+
             // Dispatcher handles finding the handler based on type info in props/body
             // We pass the ChannelName (context) to help resolve the correct message type if ambiguous
             var result = await dispatcher.DispatchAsync(body, props, cancellationToken, channelName);

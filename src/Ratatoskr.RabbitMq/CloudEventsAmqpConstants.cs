@@ -22,22 +22,24 @@ public static class CloudEventsAmqpConstants
     /// </summary>
     public const string HeaderPrefix = "cloudEvents_";
     
-    // CloudEvents attribute header names (with underscore separator)
-    public const string SpecVersionHeader = "cloudEvents_specversion";
-    public const string IdHeader = "cloudEvents_id";
-    public const string SourceHeader = "cloudEvents_source";
-    public const string TypeHeader = "cloudEvents_type";
-    public const string TimeHeader = "cloudEvents_time";
-    public const string SubjectHeader = "cloudEvents_subject";
-    
     /// <summary>
     /// Alternative header prefix using colon separator.
     /// Supported for incoming messages (per AMQP binding spec).
     /// </summary>
     public const string AlternativeHeaderPrefix = "cloudEvents:";
     
+    // CloudEvents attribute header names (with underscore separator)
+    public const string SpecVersionHeader = "specversion";
+    public const string IdHeader = "id";
+    public const string SourceHeader = "source";
+    public const string TypeHeader = "type";
+    public const string TimeHeader = "time";
+    public const string SubjectHeader = "subject";
+    public const string DataContentTypeHeader = "datacontenttype";
+    
     /// <summary>
     /// Trace propagation header (W3C Trace Context).
     /// </summary>
     public const string TraceParentHeader = "traceparent";
+    public const string TraceStateHeader = "tracestate";
 }

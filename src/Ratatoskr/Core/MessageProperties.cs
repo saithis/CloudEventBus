@@ -37,6 +37,18 @@ public class MessageProperties
     public DateTimeOffset? Time { get; set; }
     
     /// <summary>
+    /// W3C Traceparent header - Contains a version, trace ID, span ID, and trace options
+    /// https://w3c.github.io/trace-context/#traceparent-header
+    /// </summary>
+    public string? TraceParent { get; set; }
+    
+    /// <summary>
+    /// W3C Tracestate header - a comma-delimited list of key-value pairs
+    /// https://w3c.github.io/trace-context/#tracestate-header
+    /// </summary>
+    public string? TraceState { get; set; }
+    
+    /// <summary>
     /// Custom headers to include with the message.
     /// </summary>
     public Dictionary<string, string> Headers { get; set; } = new();

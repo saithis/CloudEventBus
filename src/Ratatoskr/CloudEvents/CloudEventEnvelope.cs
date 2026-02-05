@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Ratatoskr.CloudEvents;
@@ -78,5 +79,35 @@ public class CloudEventEnvelope
     /// </summary>
     [JsonExtensionData]
     public Dictionary<string, object>? Extensions { get; init; }
+
+    public bool TryGetExtension<T>(string keyName, out T? value)
+    {
+        value = default;
+        if (Extensions == null || !Extensions.TryGetValue(keyName, out var obj))
+        {
+            return false;
+        }
+
+        if (obj is T t)
+        {
+            value = t;
+            return true;
+        }
+
+        if (obj is JsonElement element)
+        {
+            try
+            {
+                value = element.Deserialize<T>();
+                return true;
+            }
+            catch
+            {
+                // Ignore deserialization errors and return false
+            }
+        }
+
+        return false;
+    }
 }
 

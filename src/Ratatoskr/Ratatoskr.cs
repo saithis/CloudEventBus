@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Ratatoskr.Core;
 
 namespace Ratatoskr;
@@ -13,7 +14,16 @@ public class Ratatoskr(
         CancellationToken cancellationToken = default)
         where TMessage : notnull
     {
+        using var activity = RatatoskrDiagnostics.ActivitySource.StartActivity("Ratatoskr.Publish", ActivityKind.Producer);
+        
         props = enricher.Enrich<TMessage>(props);
+
+        if (activity != null)
+        {
+            // https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/#messaging-attributes
+            activity.SetTag("messaging.system", "ratatoskr");
+            activity.SetTag("messaging.message.id", props.Id);
+        }
         
         var serializedMessage = serializer.Serialize(message);
         props.ContentType = serializer.ContentType;

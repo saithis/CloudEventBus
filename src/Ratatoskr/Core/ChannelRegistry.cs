@@ -40,7 +40,8 @@ public class ChannelRegistry
     }
     
     public IEnumerable<ChannelRegistration> GetConsumeChannels() => _consumeChannels.Values;
-    public IEnumerable<ChannelRegistration> GetAllChannels() => _consumeChannels.Values.Concat(_publishChannels.Values);
+    public IEnumerable<ChannelRegistration> GetPublishChannels() => _publishChannels.Values;
+    public IEnumerable<ChannelRegistration> GetAllChannels() => _publishChannels.Values.Concat(_consumeChannels.Values);
 
     public void Freeze()
     {
