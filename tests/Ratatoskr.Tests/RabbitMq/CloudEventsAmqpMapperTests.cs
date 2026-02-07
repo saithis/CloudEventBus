@@ -3,6 +3,7 @@ using AwesomeAssertions;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using Ratatoskr.CloudEvents;
+using Ratatoskr.Core;
 using Ratatoskr.RabbitMq;
 
 namespace Ratatoskr.Tests.RabbitMq;
@@ -68,5 +69,70 @@ public class CloudEventsAmqpMapperTests
         // Assert
         result.props.TraceParent.Should().Be("00-structured-trace-id-01");
         result.props.TraceState.Should().Be("structured=true");
+    }
+
+    [Test]
+    public void MapBinaryMode_ShouldNotIncludeRatatoskrHeaders()
+    {
+        // Arrange
+        var props = new MessageProperties
+        {
+            Id = "123",
+            Source = "/test",
+            Type = "test.event",
+            Time = DateTimeOffset.UtcNow,
+            TransportMetadata = 
+            {
+                { "retry-count", "1" },
+                { "original-exchange", "test-ex" }
+            }
+        };
+        
+        var outgoing = new BasicProperties();
+        var body = Encoding.UTF8.GetBytes("{}");
+
+        // Act
+        _mapper.MapOutgoing(body, props, outgoing);
+
+        // Assert
+        foreach (var (key, value) in outgoing.Headers)
+        {
+            key.Should().NotStartWith("x-ratatoskr-");
+        }
+    }
+
+    [Test]
+    public void MapStructuredMode_ShouldNotIncludeRatatoskrHeaders()
+    {
+        // Arrange
+        var mapper = new CloudEventsAmqpMapper(new CloudEventsOptions { ContentMode = CloudEventsContentMode.Structured });
+        
+        var props = new MessageProperties
+        {
+            Id = "123",
+            Source = "/test",
+            Type = "test.event",
+            Time = DateTimeOffset.UtcNow,
+            TransportMetadata = 
+            {
+                { "retry-count", "1" },
+                { "original-exchange", "test-ex" }
+            }
+        };
+        
+        var outgoing = new BasicProperties();
+        var body = Encoding.UTF8.GetBytes("{}");
+
+        // Act
+        mapper.MapOutgoing(body, props, outgoing);
+
+        // Assert
+        if (outgoing.Headers != null)
+        {
+            foreach (var (key, value) in outgoing.Headers)
+            {
+                key.Should().NotStartWith("x-ratatoskr-");
+            }
+        }
     }
 }

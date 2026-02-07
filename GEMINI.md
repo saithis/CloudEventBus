@@ -5,6 +5,7 @@
 * Prefer integration tests over unit tests
 * Keep documentation in sync with code
 * Use TUnit for tests
+* Write readable and maintainable code
 
 ## Testing
 

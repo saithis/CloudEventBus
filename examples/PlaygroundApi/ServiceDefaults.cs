@@ -41,7 +41,8 @@ public static class ServiceDefaults
             {
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
-                    .AddRuntimeInstrumentation();
+                    .AddRuntimeInstrumentation()
+                    .AddMeter("Ratatoskr");
             })
             .WithTracing(tracing =>
             {

@@ -18,9 +18,11 @@ public class RabbitMqMessageSender(
         
         var basicProps = new BasicProperties();
         
+        // Explicitly use the current activity as parent to maintain trace hierarchy
         using var activity = RatatoskrDiagnostics.ActivitySource.StartActivity(
             "Ratatoskr.Send", 
-            ActivityKind.Client);
+            ActivityKind.Client,
+            Activity.Current?.Context ?? default);
 
         if (activity != null)
         {
@@ -42,13 +44,32 @@ public class RabbitMqMessageSender(
         
         // In RabbitMQ.Client 7.x with publisher confirms enabled,
         // BasicPublishAsync returns a ValueTask that completes when the message is confirmed
-        await channel.BasicPublishAsync(
-            exchange: props.GetExchange(),
-            routingKey: props.GetRoutingKey() ?? props.Type,
-            mandatory: false,
-            basicProperties: basicProps,
-            body: bodyToSend,
-            cancellationToken: cancellationToken);
+        var startTimestamp = Stopwatch.GetTimestamp();
+        
+        try
+        {
+            await channel.BasicPublishAsync(
+                exchange: props.GetExchange(),
+                routingKey: props.GetRoutingKey() ?? props.Type,
+                mandatory: false,
+                basicProperties: basicProps,
+                body: bodyToSend,
+                cancellationToken: cancellationToken);
+        }
+        finally
+        {
+            var duration = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
+            
+            var tags = new TagList
+            {
+                { "messaging.system", "rabbitmq" },
+                { "messaging.destination.name", props.GetExchange() },
+                { "messaging.rabbitmq.destination.routing_key", props.GetRoutingKey() ?? props.Type }
+            };
+
+            RatatoskrDiagnostics.PublishDuration.Record(duration, tags);
+            RatatoskrDiagnostics.PublishMessages.Add(1, tags);
+        }
     }
     
     public async ValueTask DisposeAsync()

@@ -46,6 +46,8 @@ internal class OutboxMessageProcessor<TDbContext>(
             .Take(options.BatchSize)
             .ToArrayAsync(cancellationToken);
 
+        RatatoskrDiagnostics.OutboxBatchSize.Record(messages.Length);
+
         logger.LogInformation("Found {Count} messages to send", messages.Length);
         
         if (messages.Length == 0)
@@ -59,6 +61,7 @@ internal class OutboxMessageProcessor<TDbContext>(
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var processedCount = 0;
+        var batchStartTimestamp = Stopwatch.GetTimestamp();
         
         // Process each message with error handling
         foreach (var message in messages)
@@ -86,6 +89,7 @@ internal class OutboxMessageProcessor<TDbContext>(
                 await sender.SendAsync(message.Content, props, cancellationToken);
                 message.MarkAsProcessed(timeProvider);
                 processedCount++;
+                RatatoskrDiagnostics.OutboxProcessCount.Add(1, new TagList { { "status", "success" } });
             }
             catch (Exception e)
             {
@@ -93,8 +97,11 @@ internal class OutboxMessageProcessor<TDbContext>(
                     message.Id, message.ErrorCount + 1);
                 message.PublishFailed(e.Message, timeProvider, 
                     options.MaxRetries, options.MaxRetryDelay);
+                RatatoskrDiagnostics.OutboxProcessCount.Add(1, new TagList { { "status", "failure" } });
             }
         }
+
+        RatatoskrDiagnostics.OutboxProcessDuration.Record(Stopwatch.GetElapsedTime(batchStartTimestamp).TotalMilliseconds);
 
         // Save all changes (both successful and failed)
         await dbContext.SaveChangesAsync(CancellationToken.None);

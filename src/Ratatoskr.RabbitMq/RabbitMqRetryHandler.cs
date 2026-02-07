@@ -1,4 +1,4 @@
-using System.Text;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -51,6 +51,19 @@ internal class RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
                 "Message '{MessageId}' will be retried (attempt {RetryCount}/{MaxRetries})",
                 messageId, retryCount + 1, config.MaxRetries);
             
+            var (destinationName, routingKey) = RabbitMqHeaderHelper.GetOriginalDestinationFromHeaders(ea.BasicProperties.Headers);
+            destinationName ??= ea.Exchange;
+            routingKey ??= ea.RoutingKey;
+                
+            var tags = new TagList
+            {
+                { "messaging.system", "rabbitmq" },
+                { "messaging.destination.subscription.name", queueName },
+                { "messaging.destination.name", destinationName },
+                { "messaging.rabbitmq.destination.routing_key", routingKey }
+            };
+            RatatoskrDiagnostics.RetryMessages.Add(1, tags);
+
             // Reject without requeue - DLX will route to retry queue
             await channel.BasicNackAsync(ea.DeliveryTag, false, false, cancellationToken);
         }
@@ -63,6 +76,19 @@ internal class RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
         string queueName,
         CancellationToken cancellationToken)
     {
+        var (destinationName, routingKey) = RabbitMqHeaderHelper.GetOriginalDestinationFromHeaders(ea.BasicProperties.Headers);
+        destinationName ??= ea.Exchange;
+        routingKey ??= ea.RoutingKey;
+            
+        var tags = new TagList
+        {
+            { "messaging.system", "rabbitmq" },
+            { "messaging.destination.subscription.name", queueName },
+            { "messaging.destination.name", destinationName },
+            { "messaging.rabbitmq.destination.routing_key", routingKey }
+        };
+        RatatoskrDiagnostics.DeadLetterMessages.Add(1, tags);
+
         // Need to manually publish to DLQ since we can't conditionally route via DLX
         if (config.UseManagedRetryTopology)
         {
@@ -99,7 +125,7 @@ internal class RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
             await channel.BasicNackAsync(ea.DeliveryTag, false, false, cancellationToken);
         }
     }
-
+    
     private static int GetRetryCount(IDictionary<string, object?>? headers)
     {
         if (headers == null) return 0;
@@ -111,7 +137,7 @@ internal class RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
             {
                 int i => i,
                 long l => (int)l,
-                byte[] bytes when bytes.Length == 4 => BitConverter.ToInt32(bytes, 0),
+                byte[] { Length: 4 } bytes => BitConverter.ToInt32(bytes, 0),
                 _ => 0
             };
         }
@@ -127,7 +153,7 @@ internal class RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
                     if (entry.TryGetValue("count", out var countObj) && 
                         entry.TryGetValue("reason", out var reasonObj))
                     {
-                        var reason = GetString(reasonObj);
+                        var reason = RabbitMqHeaderHelper.ConvertHeaderToString(reasonObj);
                         if (reason == "rejected")
                         {
                             totalCount += Convert.ToInt64(countObj);
@@ -139,16 +165,5 @@ internal class RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
         }
         
         return 0;
-    }
-
-    private static string GetString(object? value)
-    {
-        return value switch
-        {
-            null => "",
-            string str => str,
-            byte[] bytes => Encoding.UTF8.GetString(bytes),
-            _ => value.ToString() ?? ""
-        };
     }
 }

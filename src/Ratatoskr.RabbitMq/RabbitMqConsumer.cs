@@ -82,56 +82,56 @@ internal class RabbitMqConsumer(
         CancellationToken cancellationToken)
     {
         var messageId = ea.BasicProperties.MessageId ?? Guid.NewGuid().ToString();
-        
+        var processStartTimestamp = Stopwatch.GetTimestamp();
+        var outcome = "failure";
+        TagList tags = default;
+        DateTimeOffset? messageTime = null;
+
         try
         {
             // Use envelope mapper to extract body and properties
             var (body, props) = envelopeMapper.MapIncoming(ea);
+            messageTime = props.Time;
             
-            // Extract parent context for tracing
-            ActivityContext.TryParse(props.TraceParent, props.TraceState, out var parentContext);
+            tags = CreateTags(ea, props, queueName);
+            
+            RatatoskrDiagnostics.ReceiveMessages.Add(1, tags);
 
-            using var activity = RatatoskrDiagnostics.ActivitySource.StartActivity(
-                "Ratatoskr.Receive", 
-                ActivityKind.Consumer, 
-                parentContext);
-
-            if (activity != null)
+            if (messageTime.HasValue)
             {
-                // https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/#messaging-attributes
-                // https://opentelemetry.io/docs/specs/semconv/messaging/rabbitmq/
-                activity.SetTag("messaging.system", "rabbitmq");
-                activity.SetTag("messaging.destination.subscription.name", queueName);
-                activity.SetTag("messaging.destination.name", ea.Exchange);
-                activity.SetTag("messaging.rabbitmq.destination.routing_key", ea.RoutingKey);
-                activity.SetTag("messaging.message.id", props.Id);
-                activity.SetTag("messaging.message.body.size", body.Length);
+                // Avoid negative lag due to clock skew
+                var lag = Math.Max((DateTimeOffset.UtcNow - messageTime.Value).TotalMilliseconds, 0);
+                RatatoskrDiagnostics.ReceiveLag.Record(lag, tags);
             }
+            
+            using var activity = StartActivity(props, tags, body.Length);
 
             // Dispatcher handles finding the handler based on type info in props/body
             // We pass the ChannelName (context) to help resolve the correct message type if ambiguous
             var result = await dispatcher.DispatchAsync(body, props, cancellationToken, channelName);
             
-            if (options.AutoAck) return; // Message already acked by broker
-
-            switch (result)
+            outcome = result switch
             {
-                case DispatchResult.Success:
-                    await channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken);
-                    break;
-                
-                case DispatchResult.NoHandlers:
-                case DispatchResult.PermanentError:
-                case DispatchResult.RecoverableError:
-                    await retryHandler.HandleFailureAsync(
-                        channel, ea, options, queueName, result, cancellationToken);
-                    break;
+                DispatchResult.Success => "success",
+                DispatchResult.NoHandlers => "no_handler",
+                _ => "failure"
+            };
+            
+            if (!options.AutoAck) 
+            {
+               await HandleDispatchResultAsync(channel, ea, options, queueName, result, cancellationToken);
             }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error processing message '{MessageId}'", messageId);
             
+            // If tags weren't initialized (e.g. envelope mapping failed), we try meaningful defaults
+            if (tags.Count == 0)
+            {
+                tags = CreateFallbackTags(ea, queueName);
+            }
+
             if (!options.AutoAck)
             {
                 // Treat exception as recoverable error
@@ -139,6 +139,102 @@ internal class RabbitMqConsumer(
                     channel, ea, options, queueName, 
                     DispatchResult.RecoverableError, cancellationToken);
             }
+        }
+        finally
+        {
+             if (tags.Count > 0)
+             {
+                 RatatoskrDiagnostics.ProcessDuration.Record(Stopwatch.GetElapsedTime(processStartTimestamp).TotalMilliseconds, tags);
+                 tags.Add("outcome", outcome);
+                 RatatoskrDiagnostics.ProcessMessages.Add(1, tags);
+                 
+                 if (messageTime.HasValue)
+                 {
+                      var lag = Math.Max((DateTimeOffset.UtcNow - messageTime.Value).TotalMilliseconds, 0);
+                      RatatoskrDiagnostics.ProcessLag.Record(lag, tags);
+                 }
+             }
+        }
+    }
+
+    private static TagList CreateTags(BasicDeliverEventArgs ea, MessageProperties props, string queueName)
+    {
+        // For metrics, use the destination name and routing key from message properties if available (preserves across retries)
+        // For retried messages, extract original values from RabbitMQ's x-death header
+        // Otherwise fall back to ea.Exchange and ea.RoutingKey
+        var (originalExchange, originalRoutingKey) = RabbitMqHeaderHelper.GetOriginalDestinationFromHeaders(ea.BasicProperties.Headers);
+        var destinationName = props.GetExchange() ?? originalExchange ?? ea.Exchange;
+        var routingKey = props.GetRoutingKey() ?? originalRoutingKey ?? ea.RoutingKey;
+        
+        return new TagList
+        {
+            { "messaging.system", "rabbitmq" },
+            { "messaging.destination.subscription.name", queueName },
+            { "messaging.destination.name", destinationName },
+            { "messaging.rabbitmq.destination.routing_key", routingKey }
+        };
+    }
+
+    private static TagList CreateFallbackTags(BasicDeliverEventArgs ea, string queueName)
+    {
+        // Try to get the original exchange and routing key from RabbitMQ's x-death header, fallback to ea values
+        var (originalExchange, originalRoutingKey) = RabbitMqHeaderHelper.GetOriginalDestinationFromHeaders(ea.BasicProperties.Headers);
+        var destinationName = originalExchange ?? ea.Exchange;
+        var routingKey = originalRoutingKey ?? ea.RoutingKey;
+            
+         return new TagList
+        {
+            { "messaging.system", "rabbitmq" },
+            { "messaging.destination.subscription.name", queueName },
+            { "messaging.destination.name", destinationName },
+            { "messaging.rabbitmq.destination.routing_key", routingKey }
+        };
+    }
+
+    private static Activity? StartActivity(MessageProperties props, TagList tags, int bodySize)
+    {
+        // Extract parent context for tracing
+        ActivityContext.TryParse(props.TraceParent, props.TraceState, out var parentContext);
+
+        var activity = RatatoskrDiagnostics.ActivitySource.StartActivity(
+            "Ratatoskr.Receive", 
+            ActivityKind.Consumer, 
+            parentContext);
+
+        if (activity != null)
+        {
+            // https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/#messaging-attributes
+            // https://opentelemetry.io/docs/specs/semconv/messaging/rabbitmq/
+            foreach (var tag in tags)
+            {
+                activity.SetTag(tag.Key, tag.Value);
+            }
+            activity.SetTag("messaging.message.id", props.Id);
+            activity.SetTag("messaging.message.body.size", bodySize);
+        }
+        return activity;
+    }
+
+    private async Task HandleDispatchResultAsync(
+        IChannel channel,
+        BasicDeliverEventArgs ea,
+        RabbitMqConsumerOptions options,
+        string queueName,
+        DispatchResult result,
+        CancellationToken cancellationToken)
+    {
+        switch (result)
+        {
+            case DispatchResult.Success:
+                await channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken);
+                break;
+            
+            case DispatchResult.NoHandlers:
+            case DispatchResult.PermanentError:
+            case DispatchResult.RecoverableError:
+                await retryHandler.HandleFailureAsync(
+                    channel, ea, options, queueName, result, cancellationToken);
+                break;
         }
     }
     

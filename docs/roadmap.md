@@ -4,10 +4,6 @@
 
     - Getting AI generated code into shape
 
-1. Observabillity
-
-    - metrics
-
 1. Testing
 
     - Make it easy for users to write tests for sending/receiving events/messages
