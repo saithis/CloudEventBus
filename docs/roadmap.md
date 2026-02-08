@@ -1,19 +1,5 @@
 # Roadmap
 
-1. DX, stability and code health
-
-    - Getting AI generated code into shape
-
-1. Testing
-
-    - Make it easy for users to write tests for sending/receiving events/messages
-
-1. Tests
-
-    - Test everything properly
-    - Prefer integration/e2e tests
-    - Use unit tests only for specific cases where it makes more sense than integration/e2e tests
-
 1. Inbox pattern
 
     - Support for the inbox pattern
