@@ -58,8 +58,10 @@ public class SecondTestEventHandler : IMessageHandler<TestEvent>
 
 public class ThrowingTestEventHandler : IMessageHandler<TestEvent>
 {
+    public List<TestEvent> ReceivedMessages { get; } = new();
     public Task HandleAsync(TestEvent message, MessageProperties context, CancellationToken cancellationToken)
     {
+        ReceivedMessages.Add(message);
         throw new InvalidOperationException("Handler failed intentionally");
     }
 }

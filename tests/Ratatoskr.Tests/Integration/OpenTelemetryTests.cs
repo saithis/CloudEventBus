@@ -46,7 +46,6 @@ public class OpenTelemetryTests(RabbitMqContainerFixture rabbitMq, PostgresConta
 
         // 4. Wait for processing
         await WaitForConditionAsync(() => handler.HandledMessages.Any(m => m.Id == eventId), TimeSpan.FromSeconds(10));
-        await Task.Delay(1000); // Wait for activities to be recorded
 
         // 5. Assert Activity Structure
         var relevantActivities = GetRelevantActivities(activities, eventId);
@@ -100,7 +99,6 @@ public class OpenTelemetryTests(RabbitMqContainerFixture rabbitMq, PostgresConta
 
         // 4. Wait for processing
         await WaitForConditionAsync(() => handler.HandledMessages.Any(m => m.Id == eventId), TimeSpan.FromSeconds(10));
-        await Task.Delay(1000);
 
         // 5. Assert Activity Structure
         var relevantActivities = GetRelevantActivities(activities, eventId);
@@ -158,7 +156,6 @@ public class OpenTelemetryTests(RabbitMqContainerFixture rabbitMq, PostgresConta
 
         // 4. Wait for processing
         await WaitForConditionAsync(() => handler.HandledMessages.Any(m => m.Id == eventId), TimeSpan.FromSeconds(10));
-        await Task.Delay(1000);
 
         // 5. Assert Metrics
         var testMetrics = GetRelevantMetrics(metricMeasurements, ExchangeName);
@@ -230,7 +227,6 @@ public class OpenTelemetryTests(RabbitMqContainerFixture rabbitMq, PostgresConta
             var retries = allMetrics.Where(m => m.InstrumentName == "ratatoskr.retry.messages").Sum(m => m.Value);
             return retries >= 2;
         }, TimeSpan.FromSeconds(10));
-        await Task.Delay(500);
 
         // 5. Assert Metrics
         var testMetrics = GetRelevantMetrics(metricMeasurements, ExchangeName);
@@ -298,7 +294,6 @@ public class OpenTelemetryTests(RabbitMqContainerFixture rabbitMq, PostgresConta
             var retryCount = allMetrics.Where(m => m.InstrumentName == "ratatoskr.retry.messages").Sum(m => m.Value);
             return dlqCount >= 1 && retryCount >= 2;
         }, TimeSpan.FromSeconds(30));
-        await Task.Delay(500);
 
         // 5. Assert Metrics
         var testMetrics = GetRelevantMetrics(metricMeasurements, ExchangeName);

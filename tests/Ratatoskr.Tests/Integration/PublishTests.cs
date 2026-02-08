@@ -3,11 +3,8 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Ratatoskr.CloudEvents;
 using Ratatoskr.Core;
-using Ratatoskr.RabbitMq;
-using Ratatoskr.RabbitMq.Config;
 using Ratatoskr.RabbitMq.Extensions;
 using Ratatoskr.Tests.Fixtures;
-using TUnit.Core;
 
 namespace Ratatoskr.Tests.Integration;
 
@@ -15,8 +12,6 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
 {
     private string ExchangeName => $"pub-test-{TestId}";
     private string DefaultRoutingKey => "test.event";
-
-
 
     [Test]
     public async Task Publish_DirectToExchange_MessageDelivered()
@@ -45,11 +40,10 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
         });
         
         // Assert
-        await Task.Delay(500);
         var message = await GetMessageAsync(queueName);
         message.Should().NotBeNull();
         
-        var body = Encoding.UTF8.GetString(message!.Body.ToArray());
+        var body = Encoding.UTF8.GetString(message.Body.ToArray());
         body.Should().Contain("direct publish");
     }
 
@@ -81,7 +75,6 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
         });
 
         // Assert
-        await Task.Delay(500);
         var message = await GetMessageAsync(queueName);
         message.Should().NotBeNull();
         
@@ -104,7 +97,6 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
             });
         });
 
-
         var queueName = $"pub-struct-{TestId}";
         await EnsureQueueBoundAsync(queueName, ExchangeName, DefaultRoutingKey);
 
@@ -119,7 +111,6 @@ public class PublishTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
         });
 
         // Assert
-        await Task.Delay(500);
         var message = await GetMessageAsync(queueName);
         message.Should().NotBeNull();
 

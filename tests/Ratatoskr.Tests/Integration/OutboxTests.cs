@@ -70,7 +70,6 @@ public class OutboxTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFix
         });
 
         // Assert
-        await Task.Delay(500);
         var message = await GetMessageAsync(QueueName);
         message.Should().NotBeNull();
         message.RoutingKey.Should().Be(DefaultRoutingKey);

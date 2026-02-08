@@ -6,7 +6,6 @@ using Medallion.Threading;
 using Medallion.Threading.FileSystem;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Ratatoskr.RabbitMq;
-using TUnit.Core.Interfaces;
 
 namespace Ratatoskr.Tests.Integration;
 
@@ -214,14 +213,19 @@ public abstract class RatatoskrIntegrationTest(RabbitMqContainerFixture rabbitMq
         }
     }
 
-    protected async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout)
+    protected Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout, string? message = null)
+    {
+        return WaitForConditionAsync(() => Task.FromResult(condition()), timeout, message);
+    }
+
+    protected async Task WaitForConditionAsync(Func<Task<bool>> condition, TimeSpan timeout, string? message = null)
     {
         var start = DateTime.UtcNow;
-        while (!condition())
+        while (!await condition())
         {
             if (DateTime.UtcNow - start > timeout)
-                throw new TimeoutException("Condition not met within timeout.");
-            await Task.Delay(50);
+                throw new TimeoutException(message ?? "Condition not met within timeout.");
+            await Task.Delay(10);
         }
     }
 }

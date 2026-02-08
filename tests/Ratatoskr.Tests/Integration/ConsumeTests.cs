@@ -1,21 +1,16 @@
 using System.Text;
 using AwesomeAssertions;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using RabbitMQ.Client;
 using Ratatoskr.CloudEvents;
-using Ratatoskr.Core;
-using Ratatoskr.RabbitMq;
-using Ratatoskr.RabbitMq.Config;
 using Ratatoskr.RabbitMq.Extensions;
 using Ratatoskr.Tests.Fixtures;
-using TUnit.Core;
 
 namespace Ratatoskr.Tests.Integration;
 
-public class ConsumeTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFixture postgres) : RatatoskrIntegrationTest(rabbitMq, postgres)
+public class ConsumeTests(
+    RabbitMqContainerFixture rabbitMq,
+    PostgresContainerFixture postgres) : RatatoskrIntegrationTest(rabbitMq, postgres)
 {
-    private string ExchangeName => $"cons-test-{TestId}";
     private string QueueName => $"cons-queue-{TestId}";
 
     [Test]
@@ -28,10 +23,7 @@ public class ConsumeTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
         {
             services.AddRatatoskr(bus => 
             {
-                bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
-                bus.AddCommandConsumeChannel(QueueName, c => c
-                    .WithRabbitMq(o => o.QueueName(QueueName).AutoAck(false).QueueOptions(durable: false, autoDelete: true))
-                    .Consumes<TestEvent>());
+                ConfigureBus(bus, QueueName);
                 bus.AddHandler<TestEvent, TestEventHandler>(handler);
             });
         });
@@ -56,12 +48,9 @@ public class ConsumeTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
         {
             services.AddRatatoskr(bus => 
             {
-                bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
-                bus.AddCommandConsumeChannel(QueueName, c => c
-                    .WithRabbitMq(o => o.QueueName(QueueName).AutoAck(false).QueueOptions(durable: false, autoDelete: true))
-                    .Consumes<TestEvent>());
-                 bus.AddHandler<TestEvent, TestEventHandler>(handler1)
-                    .AddHandler<TestEvent, SecondTestEventHandler>(handler2);
+                ConfigureBus(bus, QueueName);
+                bus.AddHandler<TestEvent, TestEventHandler>(handler1)
+                   .AddHandler<TestEvent, SecondTestEventHandler>(handler2);
             });
         });
 
@@ -83,22 +72,60 @@ public class ConsumeTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
         {
             services.AddRatatoskr(bus => 
             {
-                bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
-                bus.AddCommandConsumeChannel(QueueName, c => c
-                    .WithRabbitMq(o => o.QueueName(QueueName).AutoAck(false).QueueOptions(durable: false, autoDelete: true))
-                    .Consumes<TestEvent>());
+                ConfigureBus(bus, QueueName);
                 bus.AddHandler<TestEvent, TestEventHandler>(handler);
                 bus.ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Binary);
             });
         });
 
-        // Act - Manual publish with CloudEvents headers
-        // Using helper method but manually would be better to ensure headers are set correctly by test code
-         var factory = new ConnectionFactory { Uri = new Uri(RabbitMqConnectionString) };
+        // Act
+        await PublishBinaryCloudEventAsync(QueueName, new TestEvent { Id = "bin-1", Data = "binary data" });
+
+        // Assert
+        await WaitForConditionAsync(() => handler.HandledMessages.Count > 0, TimeSpan.FromSeconds(2));
+        handler.HandledMessages.Should().HaveCount(1);
+        handler.HandledMessages[0].Id.Should().Be("bin-1");
+    }
+
+    [Test]
+    public async Task Consume_StructuredCloudEvent_DeserializedCorrectly()
+    {
+        // Arrange
+        var handler = new TestEventHandler();
+        await StartTestAsync(services =>
+        {
+            services.AddRatatoskr(bus =>
+            {
+                ConfigureBus(bus, QueueName);
+                bus.AddHandler<TestEvent, TestEventHandler>(handler);
+                bus.ConfigureCloudEvents(ce => ce.ContentMode = CloudEventsContentMode.Structured);
+            });
+        });
+
+        // Act
+        await PublishStructuredCloudEventAsync(QueueName, new TestEvent { Id = "struct-1", Data = "structured data" });
+
+        // Assert
+        await WaitForConditionAsync(() => handler.HandledMessages.Count > 0, TimeSpan.FromSeconds(2));
+        handler.HandledMessages.Should().HaveCount(1);
+        handler.HandledMessages[0].Id.Should().Be("struct-1");
+    }
+
+    private void ConfigureBus(RatatoskrBuilder bus, string queueName)
+    {
+        bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
+        bus.AddCommandConsumeChannel(queueName, c => c
+            .WithRabbitMq(o => o.QueueName(queueName).AutoAck(false).QueueOptions(durable: false, autoDelete: true))
+            .Consumes<TestEvent>());
+    }
+
+    private async Task PublishBinaryCloudEventAsync(string routingKey, TestEvent eventData)
+    {
+        var factory = new ConnectionFactory { Uri = new Uri(RabbitMqConnectionString) };
         await using var connection = await factory.CreateConnectionAsync();
         await using var channel = await connection.CreateChannelAsync();
 
-        var json = System.Text.Json.JsonSerializer.Serialize(new TestEvent { Id = "bin-1", Data = "binary data" });
+        var json = System.Text.Json.JsonSerializer.Serialize(eventData);
         var body = Encoding.UTF8.GetBytes(json);
 
         var props = new BasicProperties
@@ -107,17 +134,39 @@ public class ConsumeTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFi
             Headers = new Dictionary<string, object?>
             {
                 ["cloudEvents_specversion"] = "1.0",
-                ["cloudEvents_type"] = "test.event", // Must match implicit type
+                ["cloudEvents_type"] = "test.event",
                 ["cloudEvents_source"] = "/test",
                 ["cloudEvents_id"] = Guid.NewGuid().ToString()
             }
         };
         
-        await channel.BasicPublishAsync(exchange: "", routingKey: QueueName, false, props, body);
+        await channel.BasicPublishAsync(exchange: "", routingKey: routingKey, mandatory: false, basicProperties: props, body: body);
+    }
 
-        // Assert
-        await WaitForConditionAsync(() => handler.HandledMessages.Count > 0, TimeSpan.FromSeconds(2));
-        handler.HandledMessages.Should().HaveCount(1);
-        handler.HandledMessages[0].Id.Should().Be("bin-1");
+    private async Task PublishStructuredCloudEventAsync(string routingKey, TestEvent eventData)
+    {
+        var factory = new ConnectionFactory { Uri = new Uri(RabbitMqConnectionString) };
+        await using var connection = await factory.CreateConnectionAsync();
+        await using var channel = await connection.CreateChannelAsync();
+
+        var cloudEvent = new
+        {
+            specversion = "1.0",
+            type = "test.event",
+            source = "/test",
+            id = Guid.NewGuid().ToString(),
+            datacontenttype = "application/json",
+            data = eventData
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(cloudEvent);
+        var body = Encoding.UTF8.GetBytes(json);
+
+        var props = new BasicProperties
+        {
+            ContentType = "application/cloudevents+json"
+        };
+        
+        await channel.BasicPublishAsync(exchange: "", routingKey: routingKey, mandatory: false, basicProperties: props, body: body);
     }
 }
