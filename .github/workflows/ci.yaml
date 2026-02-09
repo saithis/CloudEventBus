@@ -1,0 +1,40 @@
+name: CI Build & Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  # Allows you to run this workflow manually from the Actions tab if needed
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Still required for MinVer to calculate version numbers
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x' # Match your project version
+
+    - name: Restore Dependencies
+      run: dotnet restore
+
+    - name: Build
+      # builds with the Debug configuration for better error info during PRs
+      run: dotnet build --no-restore
+
+    - name: Test
+      # Runs all tests in the solution
+      run: dotnet test --no-build --verbosity normal
+
+    - name: Verify Packaging
+      # "Dry Run" - Ensures nuget packing works (e.g. checks for missing icons/licenses)
+      # We do NOT push these anywhere, we just want to know if 'pack' fails.
+      run: dotnet pack --no-build --configuration Release --output ./nupkgs
