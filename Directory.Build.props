@@ -7,11 +7,12 @@
     <Authors>Saithis</Authors>
     <PackageProjectUrl>https://github.com/saithis/Ratatoskr</PackageProjectUrl>
     <RepositoryUrl>https://github.com/saithis/Ratatoskr</RepositoryUrl>
-    <PackageLicenseExpression>LGPL</PackageLicenseExpression>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 </Project>

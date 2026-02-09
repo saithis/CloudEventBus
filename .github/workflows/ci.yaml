@@ -27,12 +27,12 @@ jobs:
       run: dotnet restore
 
     - name: Build
-      # builds with the Debug configuration for better error info during PRs
-      run: dotnet build --no-restore
+      # builds with the Release configuration for better optimization
+      run: dotnet build --no-restore --configuration Release
 
     - name: Test
       # Runs all tests in the solution
-      run: dotnet test --no-build --verbosity normal
+      run: dotnet test --no-build --configuration Release --verbosity normal
 
     - name: Verify Packaging
       # "Dry Run" - Ensures nuget packing works (e.g. checks for missing icons/licenses)
