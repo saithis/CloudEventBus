@@ -3,6 +3,7 @@
     <PropertyGroup>
         <Description>A lightweight CloudEvents bus implementation.</Description>
         <PackageTags>cloudevents;eventbus;messaging</PackageTags>
+        <IsPackable>true</IsPackable>
     </PropertyGroup>
 
     <ItemGroup>

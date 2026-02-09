@@ -3,6 +3,7 @@
     <PropertyGroup>
         <Description>RabbitMQ transport for Ratatoskr CloudEventBus.</Description>
         <PackageTags>cloudevents;eventbus;rabbitmq;messaging</PackageTags>
+        <IsPackable>true</IsPackable>
     </PropertyGroup>
 
     <ItemGroup>
