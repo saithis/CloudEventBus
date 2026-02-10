@@ -88,7 +88,8 @@ public class OutboxTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFix
             {
                 bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
                 bus.AddCommandConsumeChannel(QueueName, c => c
-                    .WithRabbitMq(o => o.QueueName(QueueName).AutoAck(false).QueueOptions(durable: false, autoDelete: true))
+                    .WithRabbitMq(o => o.QueueName(QueueName).AutoAck(false).QueueOptions(durable: false, autoDelete: true)
+                        .WithQueueType(QueueType.Classic))
                     .Consumes<TestEvent>());
                 bus.AddHandler<TestEvent, TestEventHandler>(handler);
                 bus.AddEfCoreOutbox<TestDbContext>();

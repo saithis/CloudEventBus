@@ -8,6 +8,7 @@
 1. AsyncApi support
 
     - Also make it possible to show to which channel incoming messages belong
+    - https://github.com/asyncapi/spec/pull/1161/changes
 
 1. Documentation
 

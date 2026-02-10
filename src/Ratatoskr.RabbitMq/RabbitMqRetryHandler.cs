@@ -107,10 +107,10 @@ internal class RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
             props.Headers["x-original-queue"] = queueName;
             props.Headers["x-failure-time"] = DateTimeOffset.UtcNow.ToString("O");
             
-            // Publish to DLQ
+            // Publish to DLQ Exchange
             await channel.BasicPublishAsync(
-                exchange: "",
-                routingKey: dlqName,
+                exchange: dlqName, // Publish to the DLQ Exchange (Fanout)
+                routingKey: "",    // Routing key is ignored for Fanout
                 mandatory: false,
                 basicProperties: props,
                 body: ea.Body,

@@ -83,7 +83,11 @@ public class RabbitMqTopologyManager(
             
             string queueName = consumerOpts?.QueueName ?? throw new InvalidOperationException($"Queue name must be specified for consumer channel '{reg.ChannelName}'");
             
-            IDictionary<string, object?>? queueArgs = null;
+            IDictionary<string, object?> queueArgs = new Dictionary<string, object?>(consumerOpts.QueueArguments);
+            if (consumerOpts.QueueType == QueueType.Quorum)
+            {
+                queueArgs["x-queue-type"] = "quorum";
+            }
 
             if (consumerOpts.UseManagedRetryTopology)
             {
@@ -92,17 +96,33 @@ public class RabbitMqTopologyManager(
 
                 logger.LogInformation("Provisioning retry topology for queue '{Queue}' (DLQ: {Dlq}, Retry: {Retry})", queueName, dlqName, retryQueueName);
 
-                // 1. Declare DLQ
+                // 1. Declare DLQ Exchange (Fanout)
+                await channel.ExchangeDeclareAsync(
+                    exchange: dlqName, 
+                    type: ExchangeType.Fanout, 
+                    durable: true, 
+                    autoDelete: false, 
+                    arguments: null, 
+                    cancellationToken: token);
+
+                // 2. Declare DLQ Queue
                 await channel.QueueDeclareAsync(
                     queue: dlqName,
                     durable: true, // DLQ should usually be durable to prevent data loss
                     exclusive: false,
                     autoDelete: false,
-                    arguments: null,
+                    arguments: queueArgs, // Use same type/args as main queue
+                    cancellationToken: token);
+                
+                // 3. Bind DLQ Queue to DLQ Exchange
+                await channel.QueueBindAsync(
+                    queue: dlqName,
+                    exchange: dlqName,
+                    routingKey: "",
                     cancellationToken: token);
 
-                // 2. Declare Retry Queue (TTL -> Main Queue)
-                var retryArgs = new Dictionary<string, object?>
+                // 4. Declare Retry Queue (TTL -> Main Queue)
+                var retryArgs = new Dictionary<string, object?>(queueArgs)
                 {
                     ["x-dead-letter-exchange"] = "",
                     ["x-dead-letter-routing-key"] = queueName,
@@ -117,12 +137,9 @@ public class RabbitMqTopologyManager(
                     arguments: retryArgs,
                     cancellationToken: token);
 
-                // 3. Configure Main Queue to Dead-Letter to Retry Queue
-                queueArgs = new Dictionary<string, object?>
-                {
-                    ["x-dead-letter-exchange"] = "",
-                    ["x-dead-letter-routing-key"] = retryQueueName
-                };
+                // 5. Configure Main Queue to Dead-Letter to Retry Queue
+                queueArgs["x-dead-letter-exchange"] = "";
+                queueArgs["x-dead-letter-routing-key"] = retryQueueName;
             }
 
             logger.LogInformation("Declaring queue '{Queue}' for channel '{Channel}'", queueName, reg.ChannelName);

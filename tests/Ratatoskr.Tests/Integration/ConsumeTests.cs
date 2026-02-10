@@ -4,6 +4,7 @@ using RabbitMQ.Client;
 using Ratatoskr.CloudEvents;
 using Ratatoskr.RabbitMq.Extensions;
 using Ratatoskr.Tests.Fixtures;
+using Ratatoskr.RabbitMq.Config;
 
 namespace Ratatoskr.Tests.Integration;
 
@@ -115,7 +116,8 @@ public class ConsumeTests(
     {
         bus.UseRabbitMq(o => o.ConnectionString = RabbitMqConnectionString);
         bus.AddCommandConsumeChannel(queueName, c => c
-            .WithRabbitMq(o => o.QueueName(queueName).AutoAck(false).QueueOptions(durable: false, autoDelete: true))
+            .WithRabbitMq(o => o.QueueName(queueName).AutoAck(false).QueueOptions(durable: false, autoDelete: true)
+                .WithQueueType(QueueType.Classic))
             .Consumes<TestEvent>());
     }
 
