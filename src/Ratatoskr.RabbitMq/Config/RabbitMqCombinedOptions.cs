@@ -44,6 +44,18 @@ public class RabbitMqCombinedOptions
         return this;
     }
 
+    public RabbitMqCombinedOptions WithQueueType(QueueType type)
+    {
+        EnsureConsumerOptions().QueueType = type;
+        return this;
+    }
+
+    public RabbitMqCombinedOptions WithQueueArguments(IDictionary<string, object?> arguments)
+    {
+        EnsureConsumerOptions().QueueArguments = arguments;
+        return this;
+    }
+
     public RabbitMqCombinedOptions RetryOptions(int maxRetries, TimeSpan? delay = null, bool useManaged = true)
     {
         var opts = EnsureConsumerOptions();

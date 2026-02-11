@@ -384,7 +384,8 @@ public class OpenTelemetryTests(RabbitMqContainerFixture rabbitMq, PostgresConta
             bus.AddEventConsumeChannel(ExchangeName, c => c
                 .WithRabbitMq(o => 
                 {
-                    o.QueueName(QueueName).AutoAck(false).QueueOptions(false, autoDelete: true);
+                    o.QueueName(QueueName).AutoAck(false).QueueOptions(false, autoDelete: true)
+                     .WithQueueType(QueueType.Classic);
                     configureConsumer?.Invoke(o);
                 })
                 .Consumes<TestEvent>());

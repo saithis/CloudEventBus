@@ -12,7 +12,6 @@ namespace Ratatoskr.RabbitMq;
 /// </summary>
 internal class RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
 {
-    private const string RetryCountHeader = "x-retry-count";
 
     /// <summary>
     /// Determines how to handle a failed message based on retry configuration.
@@ -107,10 +106,10 @@ internal class RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
             props.Headers["x-original-queue"] = queueName;
             props.Headers["x-failure-time"] = DateTimeOffset.UtcNow.ToString("O");
             
-            // Publish to DLQ
+            // Publish to DLQ Exchange
             await channel.BasicPublishAsync(
-                exchange: "",
-                routingKey: dlqName,
+                exchange: dlqName, // Publish to the DLQ Exchange (Fanout)
+                routingKey: "",    // Routing key is ignored for Fanout
                 mandatory: false,
                 basicProperties: props,
                 body: ea.Body,
@@ -130,19 +129,7 @@ internal class RabbitMqRetryHandler(ILogger<RabbitMqRetryHandler> logger)
     {
         if (headers == null) return 0;
         
-        // Check explicit header first
-        if (headers.TryGetValue(RetryCountHeader, out var value))
-        {
-            return value switch
-            {
-                int i => i,
-                long l => (int)l,
-                byte[] { Length: 4 } bytes => BitConverter.ToInt32(bytes, 0),
-                _ => 0
-            };
-        }
-        
-        // Fallback to x-death header for DLX loops
+        // Use x-death header to track retry attempts (automatically managed by RabbitMQ DLX)
         if (headers.TryGetValue("x-death", out var xDeathObj) && xDeathObj is System.Collections.IEnumerable xDeathList)
         {
             long totalCount = 0;

@@ -71,7 +71,8 @@ public class RetryTests(RabbitMqContainerFixture rabbitMq, PostgresContainerFixt
                     .QueueName(QueueName)
                     .AutoAck(false)
                     .RetryOptions(maxRetries: maxRetries, delay: TimeSpan.FromMilliseconds(50), useManaged: true)
-                    .QueueOptions(durable: false, autoDelete: true))
+                    .QueueOptions(durable: false, autoDelete: true)
+                    .WithQueueType(QueueType.Classic))
                 .Consumes<TestEvent>());
             
             if (addHandler)
