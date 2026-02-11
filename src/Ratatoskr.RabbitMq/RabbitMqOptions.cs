@@ -30,4 +30,9 @@ public class RabbitMqOptions
     /// Timeout for publisher confirms
     /// </summary>
     public TimeSpan PublisherConfirmTimeout { get; set; } = TimeSpan.FromSeconds(5);
+    
+    /// <summary>
+    /// Whether to automatically migrate topology (e.g., Classic -> Quorum queues)
+    /// </summary>
+    public bool AutoMigrateTopology { get; set; } = false;
 }

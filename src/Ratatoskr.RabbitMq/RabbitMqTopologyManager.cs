@@ -9,6 +9,8 @@ namespace Ratatoskr.RabbitMq;
 public class RabbitMqTopologyManager(
     ChannelRegistry registry,
     RabbitMqConnectionManager connectionManager,
+    TopologyMigrator migrator,
+    RabbitMqOptions options,
     ILogger<RabbitMqTopologyManager> logger)
 {
     private readonly TaskCompletionSource _provisioningTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -52,6 +54,11 @@ public class RabbitMqTopologyManager(
         // 1. Exchange Logic
         if (reg.Intent == ChannelType.EventPublish || reg.Intent == ChannelType.CommandConsume)
         {
+            if (options.AutoMigrateTopology)
+            {
+                await migrator.EnsureExchangeMigrationAsync(reg.ChannelName, channelOpts.ExchangeType, token);
+            }
+
             // We OWN the exchange -> Declare it
             logger.LogInformation("Declaring exchange '{Exchange}' Type: {Type}", reg.ChannelName, channelOpts.ExchangeType);
             await channel.ExchangeDeclareAsync(
@@ -96,6 +103,12 @@ public class RabbitMqTopologyManager(
 
                 logger.LogInformation("Provisioning retry topology for queue '{Queue}' (DLQ: {Dlq}, Retry: {Retry})", queueName, dlqName, retryQueueName);
 
+                if (options.AutoMigrateTopology)
+                {
+                    // Ensure DLQ Exchange is Fanout
+                    await migrator.EnsureExchangeMigrationAsync(dlqName, ExchangeType.Fanout, token);
+                }
+
                 // 1. Declare DLQ Exchange (Fanout)
                 await channel.ExchangeDeclareAsync(
                     exchange: dlqName, 
@@ -109,6 +122,14 @@ public class RabbitMqTopologyManager(
                 var dlqArgs = new Dictionary<string, object?>(queueArgs);
                 dlqArgs.Remove("x-dead-letter-exchange");
                 dlqArgs.Remove("x-dead-letter-routing-key");
+                
+                // Ensure arguments are correct for DLQ (usually same as main queue, e.g. quorum)
+                if (options.AutoMigrateTopology)
+                {
+                     // Convert DLQ queue to Quorum if needed
+                     await migrator.EnsureQueueMigrationAsync(dlqName, dlqArgs, token);
+                }
+
                 await channel.QueueDeclareAsync(
                     queue: dlqName,
                     durable: true, // DLQ should usually be durable to prevent data loss
@@ -132,6 +153,11 @@ public class RabbitMqTopologyManager(
                     ["x-message-ttl"] = (long)consumerOpts.RetryDelay.TotalMilliseconds
                 };
                 
+                if (options.AutoMigrateTopology)
+                {
+                    await migrator.EnsureQueueMigrationAsync(retryQueueName, retryArgs, token);
+                }
+
                 await channel.QueueDeclareAsync(
                     queue: retryQueueName,
                     durable: true,
@@ -143,6 +169,11 @@ public class RabbitMqTopologyManager(
                 // 5. Configure Main Queue to Dead-Letter to Retry Queue
                 queueArgs["x-dead-letter-exchange"] = "";
                 queueArgs["x-dead-letter-routing-key"] = retryQueueName;
+            }
+
+            if (options.AutoMigrateTopology)
+            {
+                await migrator.EnsureQueueMigrationAsync(queueName, queueArgs, token);
             }
 
             logger.LogInformation("Declaring queue '{Queue}' for channel '{Channel}'", queueName, reg.ChannelName);
