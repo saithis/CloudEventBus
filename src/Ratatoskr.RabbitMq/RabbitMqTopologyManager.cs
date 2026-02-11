@@ -106,12 +106,15 @@ public class RabbitMqTopologyManager(
                     cancellationToken: token);
 
                 // 2. Declare DLQ Queue
+                var dlqArgs = new Dictionary<string, object?>(queueArgs);
+                dlqArgs.Remove("x-dead-letter-exchange");
+                dlqArgs.Remove("x-dead-letter-routing-key");
                 await channel.QueueDeclareAsync(
                     queue: dlqName,
                     durable: true, // DLQ should usually be durable to prevent data loss
                     exclusive: false,
                     autoDelete: false,
-                    arguments: queueArgs, // Use same type/args as main queue
+                    arguments: dlqArgs, // Use same type/args as main queue
                     cancellationToken: token);
                 
                 // 3. Bind DLQ Queue to DLQ Exchange

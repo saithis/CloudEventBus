@@ -50,7 +50,7 @@ flowchart TD
     3. The message is moved to the **Retry Queue**.
     4. The message waits in the Retry Queue for the configured **TTL** (retry delay).
     5. Upon expiration, the Retry Queue dead-letters the message *back* to the **Main Queue** for re-processing.
-    - *Note*: `x-retry-count` headers are used to track attempts.
+    - *Note*: `x-death` headers are used to track attempts.
 
 ### 3. Dead Letter Handling (Permanent Failures)
 - If a **Permanent Error** occurs (e.g., validation failure) or **Max Retries** are exhausted:
