@@ -6,6 +6,7 @@ using Ratatoskr.RabbitMq.Config;
 using Ratatoskr.RabbitMq.Extensions;
 using Ratatoskr.RabbitMq.WolverineMigration;
 using Ratatoskr.Tests.Fixtures;
+using Ratatoskr.Tests.Integration;
 
 namespace Ratatoskr.Tests.Migration;
 
@@ -196,7 +197,7 @@ public class WolverineMigrationTests(
                     .WithRabbitMq(o => o
                         .QueueName(QueueName)
                         .WithQueueType(QueueType.Quorum)
-                        .RetryOptions(maxRetries: 2, retryDelay: TimeSpan.FromMilliseconds(100)))
+                        .RetryOptions(maxRetries: 2, delay: TimeSpan.FromMilliseconds(100)))
                     .Consumes<TestEvent>());
                 
                 bus.AddHandler<TestEvent, RetryTestHandler>();
@@ -214,9 +215,12 @@ public class WolverineMigrationTests(
         // Wait for retries
         await Task.Delay(2000);
 
-        // Assert - Handler should have been called 3 times (initial + 2 retries)
-        var counter = GetService<RetryCounter>();
-        counter.Count.Should().BeGreaterThanOrEqualTo(2, "Message should be retried");
+        await InScopeAsync(async scope =>
+        {
+            // Assert - Handler should have been called 3 times (initial + 2 retries)
+            var counter = scope.ServiceProvider.GetRequiredService<RetryCounter>();
+            counter.Count.Should().BeGreaterThanOrEqualTo(2, "Message should be retried");
+        });
     }
 
     [Test]
@@ -246,14 +250,17 @@ public class WolverineMigrationTests(
         // Wait for consumer to start
         await Task.Delay(500);
 
-        // Act
-        var healthCheck = GetService<WolverineMigrationHealthCheck>();
-        var result = await healthCheck.CheckHealthAsync(new Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext());
+        await InScopeAsync(async scope =>
+        {
+            // Act
+            var healthCheck = scope.ServiceProvider.GetRequiredService<WolverineMigrationHealthCheck>();
+            var result = await healthCheck.CheckHealthAsync(new Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext());
 
-        // Assert
-        result.Status.Should().Be(Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Healthy);
-        result.Data.Should().ContainKey("migration_enabled");
-        result.Data.Should().ContainKey("queue_suffix");
+            // Assert
+            result.Status.Should().Be(Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Healthy);
+            result.Data.Should().ContainKey("migration_enabled");
+            result.Data.Should().ContainKey("queue_suffix");
+        });
     }
 
     [Test]
@@ -278,7 +285,7 @@ public class WolverineMigrationTests(
                     .WithRabbitMq(o => o
                         .QueueName(QueueName)
                         .WithQueueType(QueueType.Quorum)
-                        .RetryOptions(maxRetries: 1, retryDelay: TimeSpan.FromMilliseconds(50)))
+                        .RetryOptions(maxRetries: 1, delay: TimeSpan.FromMilliseconds(50)))
                     .Consumes<TestEvent>());
                 
                 bus.AddHandler<TestEvent, PermanentErrorHandler>();
@@ -340,12 +347,15 @@ public class WolverineMigrationTests(
             });
         });
 
-        // Act
-        var topologyManager = GetService<WolverineMigrationTopologyManager>();
-        var migratedName = topologyManager.GetMigratedQueueName(QueueName);
+        await InScopeAsync(scope =>
+        {
+            // Act
+            var topologyManager = scope.ServiceProvider.GetRequiredService<WolverineMigrationTopologyManager>();
+            var migratedName = topologyManager.GetMigratedQueueName(QueueName);
 
-        // Assert
-        migratedName.Should().Be($"{QueueName}.v2");
+            // Assert
+            migratedName.Should().Be($"{QueueName}.v2");
+        });
     }
 
     // Helper classes
