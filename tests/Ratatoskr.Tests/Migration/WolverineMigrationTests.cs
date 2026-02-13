@@ -46,6 +46,13 @@ public class WolverineMigrationTests(
                     .Consumes<TestEvent>());
             });
         });
+        
+        // Wait for provisioning to complete to avoid race conditions
+        await InScopeAsync(async scope =>
+        {
+            var manager = scope.ServiceProvider.GetRequiredService<WolverineMigrationTopologyManager>();
+            await manager.WaitForProvisioningAsync();
+        });
 
         // Assert - Verify v2 queues exist
         var factory = new ConnectionFactory { Uri = new Uri(RabbitMqConnectionString) };
@@ -100,8 +107,11 @@ public class WolverineMigrationTests(
     [Test]
     public async Task Migration_ValidatesWolverineTopologyExists_ThrowsIfMissing()
     {
-        // Arrange & Act
-        var act = async () => await StartTestAsync(services =>
+
+
+        // Act & Assert - Topology validation runs during provisioning
+        // We need to wait for provisioning to fail
+        await StartTestAsync(services =>
         {
             services.AddRatatoskr(bus =>
             {
@@ -120,10 +130,16 @@ public class WolverineMigrationTests(
                     .Consumes<TestEvent>());
             });
         });
-
-        // Assert
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .Where(e => e.Message.Contains("Wolverine topology validation failed"));
+        
+        await InScopeAsync(async scope =>
+        {
+            var manager = scope.ServiceProvider.GetRequiredService<WolverineMigrationTopologyManager>();
+            
+            // Should throw InvalidOperationException from validation failure
+            Func<Task> act = () => manager.WaitForProvisioningAsync();
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .Where(e => e.Message.Contains("Wolverine topology validation failed"));
+        });
     }
 
     [Test]
@@ -156,6 +172,13 @@ public class WolverineMigrationTests(
             });
             
             services.AddSingleton(receivedMessages);
+        });
+
+        // Wait for migration provisioning
+        await InScopeAsync(async scope =>
+        {
+            var manager = scope.ServiceProvider.GetRequiredService<WolverineMigrationTopologyManager>();
+            await manager.WaitForProvisioningAsync();
         });
 
         // Act - Publish directly to v2 queue
@@ -206,6 +229,13 @@ public class WolverineMigrationTests(
             services.AddSingleton(new RetryCounter { Count = 0 });
         });
 
+        // Wait for topology
+        await InScopeAsync(async scope =>
+        {
+            var manager = scope.ServiceProvider.GetRequiredService<WolverineMigrationTopologyManager>();
+            await manager.WaitForProvisioningAsync();
+        });
+
         // Act - Publish message that will fail twice then succeed
         await PublishToRabbitMqAsync(
             exchange: "", 
@@ -247,14 +277,28 @@ public class WolverineMigrationTests(
             });
         });
 
-        // Wait for consumer to start
-        await Task.Delay(500);
+        // Wait for provisioning instead of arbitrary delay
+        await InScopeAsync(async scope =>
+        {
+            var manager = scope.ServiceProvider.GetRequiredService<WolverineMigrationTopologyManager>();
+            await manager.WaitForProvisioningAsync();
+        });
 
         await InScopeAsync(async scope =>
         {
             // Act
+            // Act
             var healthCheck = scope.ServiceProvider.GetRequiredService<WolverineMigrationHealthCheck>();
-            var result = await healthCheck.CheckHealthAsync(new Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext());
+            var context = new Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext();
+
+            // Wait for healthy status (consumer channels take a moment to start)
+            await WaitForConditionAsync(async () => 
+            {
+                var res = await healthCheck.CheckHealthAsync(context);
+                return res.Status == Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Healthy;
+            }, TimeSpan.FromSeconds(5), "Health check to become healthy");
+
+            var result = await healthCheck.CheckHealthAsync(context);
 
             // Assert
             result.Status.Should().Be(Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Healthy);
@@ -290,6 +334,13 @@ public class WolverineMigrationTests(
                 
                 bus.AddHandler<TestEvent, PermanentErrorHandler>();
             });
+        });
+
+        // Wait for topology
+        await InScopeAsync(async scope =>
+        {
+            var manager = scope.ServiceProvider.GetRequiredService<WolverineMigrationTopologyManager>();
+            await manager.WaitForProvisioningAsync();
         });
 
         // Act - Publish message that will fail permanently

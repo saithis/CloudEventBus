@@ -78,9 +78,11 @@ public static class WolverineMigrationExtensions
         }
         
         // Add migration consumer
-        builder.Services.AddHostedService<WolverineMigrationConsumer>();
+        builder.Services.AddSingleton<WolverineMigrationConsumer>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<WolverineMigrationConsumer>());
         
         // Register migration health check
+        builder.Services.AddSingleton<WolverineMigrationHealthCheck>();
         builder.Services.AddHealthChecks()
             .AddCheck<WolverineMigrationHealthCheck>("wolverine_migration");
         
